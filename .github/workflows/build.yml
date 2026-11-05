@@ -16,6 +16,4 @@ jobs:
           cache: maven
       - name: Test and package API
         working-directory: backend
-        run: mvn --batch-mode verify
-      - name: Build application containers
-        run: docker compose build
+        run: bash mvnw --batch-mode verify

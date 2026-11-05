@@ -63,7 +63,9 @@ public class AdminController {
         requireRole(e.studentId(),"STUDENT"); db.update("INSERT INTO student_enrollments(student_user_id,section_id) VALUES(?,?)",e.studentId(),e.sectionId()); audit(auth,"STUDENT_ENROLLED","SECTION",e.sectionId()); return Map.of("studentId",e.studentId(),"sectionId",e.sectionId());
     }
     @PostMapping("/assignments") @Transactional Map<String,Object> assign(@Valid @RequestBody Link l,org.springframework.security.core.Authentication auth) {
-        requireRole(l.userId(),"FACULTY"); db.update("INSERT INTO faculty_assignments(faculty_user_id,section_id,subject_id) VALUES(?,?,?)",l.userId(),l.sectionId(),l.subjectId()); audit(auth,"FACULTY_ASSIGNED","SECTION",l.sectionId()); return Map.of("facultyId",l.userId(),"sectionId",l.sectionId(),"subjectId",l.subjectId());
+        requireRole(l.userId(),"FACULTY");
+        Integer compatible=db.queryForObject("SELECT COUNT(*) FROM sections s JOIN subjects sub ON sub.course_id=s.course_id WHERE s.id=? AND sub.id=? AND s.active=TRUE AND sub.active=TRUE",Integer.class,l.sectionId(),l.subjectId());
+        if(compatible==null||compatible==0) throw new IllegalArgumentException("Subject must belong to the section's course."); db.update("INSERT INTO faculty_assignments(faculty_user_id,section_id,subject_id) VALUES(?,?,?)",l.userId(),l.sectionId(),l.subjectId()); audit(auth,"FACULTY_ASSIGNED","SECTION",l.sectionId()); return Map.of("facultyId",l.userId(),"sectionId",l.sectionId(),"subjectId",l.subjectId());
     }
     @GetMapping("/enrollments") List<Map<String,Object>> enrollments() { return db.queryForList("SELECT e.id,e.student_user_id studentId,u.display_name studentName,e.section_id sectionId,s.code sectionCode,e.status FROM student_enrollments e JOIN users u ON u.id=e.student_user_id JOIN sections s ON s.id=e.section_id ORDER BY s.code,u.display_name"); }
     private void requireRole(long id,String role) { Integer found=db.queryForObject("SELECT COUNT(*) FROM users WHERE id=? AND role=? AND active=TRUE",Integer.class,id,role); if(found==null||found==0) throw new IllegalArgumentException("Selected active user must have role "+role+"."); }

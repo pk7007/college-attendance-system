@@ -1,24 +1,11 @@
-# Architecture and data model
+# Architecture
 
-The browser client is a static single page served by Nginx. Nginx forwards same-origin `/api/` requests to the Spring Boot API. The API uses Spring Security sessions and JDBC service queries; Flyway manages schema changes; MySQL stores academic structure, accounts, class sessions, attendance marks, and audit events.
+Browser → Spring Boot on 127.0.0.1:8080 → local MySQL 8.
 
-```text
-Browser → Nginx web client → Spring Boot API → MySQL
-                                  └── Flyway migrations
-```
+Spring Boot serves `backend/src/main/resources/static/index.html` and `/api/**` from the same origin. There is no frontend build or separate proxy. Maven Wrapper packages the HTML and Java API together in an executable jar.
 
-## Main relationships
+Flyway migrations in `backend/src/main/resources/db/migration` create/upgrade tables. Do not change already-applied migrations; add subsequent versioned SQL files. Configuration is loaded by `start-local.ps1` from ignored `local-config.psd1` into process environment variables.
 
-- A department owns courses; courses own sections and subjects.
-- An academic year owns semesters; sections connect a course and semester.
-- Student enrollments connect a student account to a section.
-- Faculty assignments connect a faculty account to a section and subject.
-- A class session is unique by section, subject, date, and session label.
-- An attendance mark is unique by session and student; it records status, marker, and timestamp.
-- Audit events record the actor, action, entity type, entity ID, and timestamp.
+Controllers enforce roles and faculty assignments. Student routes derive identity from the authenticated session. CSRF protects writes; passwords use BCrypt. Disabled users lose authenticated access on subsequent requests. Attendance saves validate the complete roster and use an optimistic version check inside a transaction.
 
-See `backend/src/main/resources/db/migration/V1__schema.sql` for the authoritative schema. Schema changes are forward-only Flyway migrations; Hibernate does not create production tables.
-
-## Security boundaries
-
-The server derives the signed-in user identity from the session. Admin operations require `ADMIN`; faculty APIs require `FACULTY` and check each assignment; student summary/history use the authenticated student ID and do not accept a student ID from the browser. Writes require the CSRF token cookie/header pair. Passwords are BCrypt hashes and are not returned by APIs.
+Development data is seeded only in the dev profile. Git stores source and documentation, not MySQL files, credentials or user records. The original machine's isolated test database is under ignored `.local/mysql-data` and uses port 3307; a normal MySQL installation uses its own managed data directory and port 3306.

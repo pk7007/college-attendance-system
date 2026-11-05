@@ -1,70 +1,94 @@
-# College Attendance Management System
+# College Attendance System
 
-College Attendance Management System (CAMS) is a Java, MySQL, and browser-based application for managing academic classes, recording class-session attendance, and showing students their own records. The repository also includes an offline-only preview at `demo/index.html`; that preview stores sample data in browser storage and does not connect to the database.
+A browser application served by Java Spring Boot with persistent MySQL storage. Open **http://localhost:8080**. The frontend is HTML/CSS/JavaScript in `backend/src/main/resources/static/index.html`; all records use the Java API and MySQL.
 
-## Run the full application
+## Install once on a Windows laptop
 
-Install Docker Desktop with Docker Compose, then from this repository folder run:
+1. Install **JDK 21** (not only a JRE). Set `JAVA_HOME` to its folder and add `%JAVA_HOME%\bin` to PATH. Confirm `java -version` and `javac -version`.
+2. Install **MySQL Server 8**, including its `mysql` and `mysqldump` command-line tools. Start its Windows service, and retain your administrator password.
+3. Use a modern browser. Git is optional: clone this repository or use GitHub **Code → Download ZIP** and extract it.
 
-```powershell
-Copy-Item attendance.env.example .env
-docker compose up --build -d
-```
+Maven Wrapper downloads Maven and dependencies on the first run, so internet is required initially. Node, Docker, a separate web server, and a desktop/mobile app are not required.
 
-Open <http://localhost:4173>. The API is at <http://localhost:8080/api/health>. On first startup, Flyway creates the MySQL schema and the development profile inserts sample accounts, a Computer Science class, and two sample attendance sessions.
+## First-time database setup
 
-### Development demo accounts
-
-The example `.env` sets these local passwords:
-
-| Role | Email | Password |
-| --- | --- | --- |
-| Admin | `admin@college.test` | `CampusAdmin-Change-123!` |
-| Faculty | `faculty@college.test` | `FacultyDemo-2026!` |
-| Student | `student@college.test` | `StudentDemo-2026!` |
-
-These are development-only credentials. Change them before sharing a development environment. Do not use real student records until the deployment, privacy, and security review is complete.
-
-To stop the services while keeping the MySQL volume:
+Open the MySQL command-line client as your database administrator:
 
 ```powershell
-docker compose down
+mysql -u root -p
 ```
 
-### Run backend without Compose
+Edit `docs/create-database.sql` to replace the placeholder password with a unique local password, then execute those statements in the MySQL client. The account is restricted to the `college_attendance` database. Keep your edited credentials local; do not commit them. Flyway applies the versioned schema automatically when Java starts.
 
-Requirements: Java 21, Maven 3.6.3+, and a MySQL 8 database. Set `CAM_DB_URL`, `CAM_DB_USER`, `CAM_DB_PASSWORD`, `CAM_BOOTSTRAP_ADMIN_EMAIL`, and `CAM_BOOTSTRAP_ADMIN_PASSWORD`; then run:
+In PowerShell at the repository root:
+
+```powershell
+Copy-Item local-config.example.psd1 local-config.psd1
+notepad local-config.psd1
+```
+
+Set `CAM_DB_PASSWORD` to the database account password you selected. Set host, port and database name if different. `local-config.psd1` is ignored by Git. The example uses MySQL port 3306. On the original development machine the isolated verification database uses port 3307.
+
+## Start and stop
+
+```powershell
+.\start-local.ps1
+```
+
+If Windows blocks local scripts, run `powershell -ExecutionPolicy Bypass -File .\start-local.ps1` for this one process. The script checks Java and MySQL TCP connectivity, builds/tests with Maven Wrapper, and launches the server. Database authentication and schema checks happen during application startup. Wait for `Started AttendanceApplication`, then visit http://localhost:8080. Keep the terminal open. Press **Ctrl+C** to stop Java; MySQL keeps the saved records.
+
+If port 8080 is occupied, stop your previous instance. For a different port set `PORT` in your environment and open that port instead. MySQL connection errors require checking the running service and local configuration; a TCP connection alone does not prove credentials are valid.
+
+To build without starting:
 
 ```powershell
 cd backend
-mvn spring-boot:run
+.\mvnw.cmd verify
 ```
 
-Flyway applies the SQL files in `backend/src/main/resources/db/migration/` on startup. In this mode, serve the frontend through Nginx or another same-origin reverse proxy that forwards `/api/` to port 8080.
+## Local development accounts
 
-## What is included
+The `dev` profile seeds these accounts and sample attendance on a fresh database:
 
-- Admin: create user accounts, set up departments, years, semesters, courses, sections and subjects, enroll students, and assign faculty.
-- Faculty: view assigned classes, open dated class sessions, mark the full enrolled roster present, absent, or late, and update saved sessions with version checks.
-- Student: view overall and per-subject attendance and paginated history for their own account.
-- Reports: admins can view all completed attendance and export CSV; faculty reports are limited to assigned classes.
-- Security: BCrypt password hashes, server-side role checks, HttpOnly session cookies, CSRF protection for writes, and ownership checks on attendance routes.
-- Database: MySQL 8 with forward-only Flyway migrations, foreign keys, indexes, unique class-session and student-mark constraints, and audit events.
+| Role | Email | Password |
+| --- | --- | --- |
+| Admin | admin@college.test | CampusAdmin-Change-123! |
+| Faculty | faculty@college.test | FacultyDemo-2026! |
+| Student | student@college.test | StudentDemo-2026! |
 
-Attendance percentage is `(PRESENT + LATE) / completed sessions × 100`. Cancelled and incomplete sessions are excluded. Class dates are stored as SQL `DATE`; audit timestamps are UTC instants. The institution display timezone is assumed to be `Asia/Kolkata`.
+These are sample accounts for local development. Configuration changes do not reset existing account passwords. Newly created users can change their temporary password from their workspace.
 
-## API routes
+## Workflows
 
-- `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me`, `GET /api/auth/csrf`
-- `GET/POST /api/admin/users`, `GET /api/admin/classes`, `POST /api/admin/academic/setup`, `POST /api/admin/enrollments`, `POST /api/admin/assignments`
-- `GET /api/faculty/classes`, `GET /api/faculty/classes/{assignmentId}/roster`, `GET/POST /api/faculty/classes/{assignmentId}/sessions`, `PUT /api/faculty/sessions/{sessionId}/attendance`
-- `GET /api/student/attendance/summary`, `GET /api/student/attendance/history`
-- `GET /api/reports/attendance`, `GET /api/reports/attendance.csv`, `GET /api/health`
+- Admin: create accounts; create departments, academic years, semesters, courses, sections and subjects; enroll students and assign faculty. **Manage records** edits names/codes and activates or deactivates users, courses, sections, subjects, departments, enrollments and assignments. Deactivation retains existing attendance.
+- Faculty: select an assigned class, open a dated session, review the entire roster, save attendance, or reopen a saved session to update it. Conflicting edits require reloading.
+- Student: view personal percentages and attendance history.
+- Admin/faculty: filter reports by date and section and download matching CSV. Faculty are restricted to assigned classes. Each export is limited to 5,000 rows; narrow the date range for larger datasets.
 
-## GitHub transfer
+Passwords are BCrypt hashes. Sessions use HttpOnly cookies, requests use CSRF tokens, and backend role/ownership checks enforce access. The local server binds to loopback. Attendance percentage counts PRESENT and LATE over completed recorded sessions; cancelled/open sessions are excluded.
 
-This project is in [pk7007/college-attendance-system](https://github.com/pk7007/college-attendance-system). Clone it on another laptop, copy `attendance.env.example` to `.env`, then run the Compose commands above. The database volume remains on the machine where it was created; GitHub transfers source code, not database contents.
+## Backup and transfer
 
-## Production notes
+GitHub transfers source code, **not database records**. A fresh laptop starts with a fresh database unless you restore a backup. Avoid changing records during a backup/restore.
 
-Compose defaults and the development bootstrap are for local demo use only. For production, use the `prod` profile, high-entropy secrets from a secret manager, HTTPS, secure cookies, protected network ingress, reviewed backup/restore procedures, and institution-approved retention and privacy policies. The development bootstrap is disabled outside the `dev` profile. Never expose MySQL to the public internet.
+```powershell
+mysqldump -u attendance -p --single-transaction --no-tablespaces --result-file=attendance.sql.backup college_attendance
+mysql -u attendance -p college_attendance
+```
+
+At the MySQL prompt on the destination, use `source C:/path/to/attendance.sql.backup;`. Restore into a newly created empty database before starting the application. Restoring into a populated database can replace data; retain a backup first. Do not upload backups containing student data to GitHub.
+
+## Verification and screenshots
+
+See [verification report](docs/verification.md) for actual checks and limitations. The optional integration script requires Python 3 **only for testing** and creates labelled test records in the local demo database:
+
+```powershell
+python scripts/verify-local.py
+```
+
+The images below are genuine captures of the integrated Java/MySQL application.
+
+![Login](docs/screenshots/login.png)
+![Administrator](docs/screenshots/admin.png)
+![Faculty attendance](docs/screenshots/faculty.png)
+![Student attendance](docs/screenshots/student.png)
