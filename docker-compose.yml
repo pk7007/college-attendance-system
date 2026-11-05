@@ -1,0 +1,45 @@
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${CAM_DB_NAME:-college_attendance}
+      MYSQL_USER: ${CAM_DB_USER:-attendance}
+      MYSQL_PASSWORD: ${CAM_DB_PASSWORD:-attendance_dev_only}
+      MYSQL_ROOT_PASSWORD: ${CAM_DB_ROOT_PASSWORD:-root_dev_only}
+      TZ: UTC
+    ports:
+      - "127.0.0.1:3306:3306"
+    volumes:
+      - attendance_mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p\"$${MYSQL_ROOT_PASSWORD}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 25
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
+      CAM_DB_URL: jdbc:mysql://mysql:3306/${CAM_DB_NAME:-college_attendance}?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC
+      CAM_DB_USER: ${CAM_DB_USER:-attendance}
+      CAM_DB_PASSWORD: ${CAM_DB_PASSWORD:-attendance_dev_only}
+      CAM_BOOTSTRAP_ADMIN_EMAIL: ${CAM_BOOTSTRAP_ADMIN_EMAIL:-admin@college.test}
+      CAM_BOOTSTRAP_ADMIN_PASSWORD: ${CAM_BOOTSTRAP_ADMIN_PASSWORD:-CampusAdmin-Change-123!}
+      CAM_DEMO_FACULTY_PASSWORD: ${CAM_DEMO_FACULTY_PASSWORD:-FacultyDemo-2026!}
+      CAM_DEMO_STUDENT_PASSWORD: ${CAM_DEMO_STUDENT_PASSWORD:-StudentDemo-2026!}
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8080:8080"
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "127.0.0.1:4173:80"
+volumes:
+  attendance_mysql:

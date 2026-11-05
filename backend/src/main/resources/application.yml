@@ -1,0 +1,29 @@
+server:
+  port: ${PORT:8080}
+  servlet:
+    session:
+      cookie:
+        http-only: true
+        same-site: lax
+        secure: ${SESSION_COOKIE_SECURE:false}
+spring:
+  application:
+    name: college-attendance-api
+  profiles:
+    default: dev
+  datasource:
+    url: ${CAM_DB_URL:jdbc:mysql://localhost:3306/college_attendance?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC}
+    username: ${CAM_DB_USER:attendance}
+    password: ${CAM_DB_PASSWORD:attendance_dev_only}
+  flyway:
+    enabled: true
+  jdbc:
+    template:
+      query-timeout: 10
+  jackson:
+    default-property-inclusion: non_null
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health

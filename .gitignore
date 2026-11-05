@@ -1,0 +1,7 @@
+.env
+*.log
+backend/target/
+frontend/node_modules/
+.idea/
+.vscode/
+Thumbs.db
