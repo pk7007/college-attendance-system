@@ -287,7 +287,7 @@ async function manageView() {
   shell('Manage records', 'Rename records and activate or deactivate them. Deactivated items disappear from faculty and student views; saved attendance is kept.', `<section class="panel">
   <label class="field">Resource<select id="resource">${Object.entries(resources).map(([k, v]) => `<option value="${k}" ${k === manageEntity ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
   ${rows.map(r => `<form class="record" data-id="${esc(r.id)}"><div class="field"><span>${esc(r.label)}</span></div>
-  ${links ? '<div></div>' : `<label class="field">Name / code<input name="value" value="${esc(r.value)}" maxlength="120" required></label>`}
+  ${links ? '<div></div>' : `<label class="field">Name / code<input name="value" value="${esc(r.value)}" maxlength="${({sections: 30, semesters: 50})[manageEntity] || 120}" required></label>`}
   <label class="field">Status<select name="active"><option value="true" ${r.active ? 'selected' : ''}>Active</option><option value="false" ${!r.active ? 'selected' : ''}>Inactive</option></select></label><button class="secondary">Save</button></form>`).join('') || '<p class="muted">No records yet.</p>'}</section>`);
   $('resource').onchange = e => { manageEntity = e.target.value; render(); };
   document.querySelectorAll('form.record').forEach(form => form.onsubmit = e => {
@@ -302,11 +302,13 @@ async function manageView() {
 // ---- reports (admin and faculty) -----------------------------------------------------------
 async function reportView() {
   const query = new URLSearchParams(Object.entries(reportFilters).filter(([, v]) => v)).toString();
-  const [classes, summary, rows] = await Promise.all([api(user.role === 'ADMIN' ? '/admin/classes' : '/faculty/classes'), api('/reports/summary?' + query), api('/reports/attendance?' + query)]);
-  const sections = unique(classes, 'sectionId');
+  // Admins can report on every section, including deactivated ones; faculty only on their current classes.
+  const [choices, summary, rows] = await Promise.all([api(user.role === 'ADMIN' ? '/admin/manage/sections' : '/faculty/classes'), api('/reports/summary?' + query), api('/reports/attendance?' + query)]);
+  const sections = user.role === 'ADMIN' ? choices.map(s => ({id: s.id, label: s.label + (s.active ? '' : ' (inactive)')}))
+                                          : unique(choices, 'sectionId').map(c => ({id: c.sectionId, label: `${c.courseName} · ${c.sectionCode}`}));
   shell('Attendance reports', 'Completed sessions only. Cancelled sessions are excluded, matching what students see.', `<section class="panel"><form id="filters" class="form-grid">
   <label class="field">From<input name="from" type="date" value="${esc(reportFilters.from)}"></label><label class="field">To<input name="to" type="date" value="${esc(reportFilters.to)}"></label>
-  <label class="field">Section<select name="sectionId"><option value="">${user.role === 'ADMIN' ? 'All sections' : 'All my sections'}</option>${options(sections, c => c.sectionId, c => `${c.courseName} · ${c.sectionCode}`, reportFilters.sectionId)}</select></label>
+  <label class="field">Section<select name="sectionId"><option value="">${user.role === 'ADMIN' ? 'All sections' : 'All my sections'}</option>${options(sections, c => c.id, c => c.label, reportFilters.sectionId)}</select></label>
   <div class="actions"><button class="primary">Apply filters</button><button type="button" class="quiet" id="clear">Clear</button></div></form><button id="csv" class="secondary">Download CSV</button></section>
   <section class="panel"><div class="panel-head"><h2>Attendance by student</h2><span class="pill">${plural(summary.length, 'row')}</span></div>${table(['Student', 'Section', 'Subject', 'Present', 'Late', 'Absent', 'Attendance'],
     summary.map(r => [`${esc(r.studentName)}<br><span class="muted">${esc(r.email)}</span>`, esc(r.sectionCode), esc(r.subjectName), esc(r.present), esc(r.late), esc(r.absent), `<b>${esc(pct(r.percentage))}</b>`]))}</section>

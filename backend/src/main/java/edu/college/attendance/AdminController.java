@@ -157,7 +157,19 @@ public class AdminController {
             () -> db.update("INSERT INTO subjects(course_id,code,name) VALUES(?,?,?)", course, subjectCode, a.subjectName().trim()), course, subjectCode);
 
         app.audit(auth, "ACADEMIC_CLASS_CREATED", "SECTION", section);
-        return Map.of("sectionId", section, "subjectId", subject, "message", "Class " + sectionCode + " · " + subjectCode + " is ready.");
+        // Existing codes keep their stored names; say so rather than implying the typed names were applied.
+        List<String> kept = new java.util.ArrayList<>();
+        keptName(kept, "department", "SELECT name FROM departments WHERE id=?", department, a.departmentName());
+        keptName(kept, "course", "SELECT name FROM courses WHERE id=?", course, a.courseName());
+        keptName(kept, "subject", "SELECT name FROM subjects WHERE id=?", subject, a.subjectName());
+        String message = "Class " + sectionCode + " · " + subjectCode + " is ready." +
+            (kept.isEmpty() ? "" : " Existing " + String.join(", ", kept) + " kept; rename under Manage records if needed.");
+        return Map.of("sectionId", section, "subjectId", subject, "message", message);
+    }
+
+    private void keptName(List<String> kept, String what, String sql, long id, String typed) {
+        String stored = db.queryForObject(sql, String.class, id);
+        if (stored != null && !stored.equals(typed.trim())) kept.add(what + " name \"" + stored + "\"");
     }
 
     // ---- enrollments and assignments ----------------------------------------------------
@@ -216,8 +228,9 @@ public class AdminController {
     private long ensure(String findSql, String table, Runnable insert, Object... key) {
         List<Long> rows = db.query(findSql, (rs, n) -> rs.getLong(1), key);
         if (rows.isEmpty()) {
-            insert.run();
-            rows = db.query(findSql, (rs, n) -> rs.getLong(1), key);
+            try { insert.run(); }
+            catch (org.springframework.dao.DuplicateKeyException raced) { /* another admin created it a moment ago */ }
+            rows = db.query(findSql + " LOCK IN SHARE MODE", (rs, n) -> rs.getLong(1), key); // locking read sees the latest committed row
         } else {
             db.update("UPDATE " + table + " SET active=TRUE WHERE id=? AND active=FALSE", rows.getFirst());
         }

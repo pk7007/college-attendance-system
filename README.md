@@ -129,8 +129,10 @@ docker compose exec -T db sh -c 'mysql -u attendance -p"$MYSQL_PASSWORD" college
 ```
 
 ```powershell
-# Without Docker
+# Without Docker (Windows, macOS, Linux): back up
 mysqldump -u attendance -p --single-transaction --no-tablespaces --result-file=attendance-backup.sql college_attendance
+# ...and restore into an empty college_attendance database (create it with docs/create-database.sql first)
+mysql -u attendance -p college_attendance -e "source attendance-backup.sql"
 ```
 
 ## Troubleshooting
