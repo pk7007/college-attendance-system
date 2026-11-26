@@ -9,3 +9,4 @@ Thumbs.db
 .local/
 local-config.psd1
 *.sql.backup
+local-config.env

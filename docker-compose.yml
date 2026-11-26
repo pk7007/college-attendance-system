@@ -1,0 +1,41 @@
+# One-command install: `docker compose up -d --build`, then open http://localhost:8080
+# Settings come from a .env file next to this one (copy .env.example). Defaults work for a local demo.
+services:
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: college_attendance
+      MYSQL_USER: attendance
+      MYSQL_PASSWORD: ${CAM_DB_PASSWORD:-attendance_dev_only}
+      MYSQL_ROOT_PASSWORD: ${CAM_DB_ROOT_PASSWORD:-root_dev_only}
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_0900_ai_ci"]
+    volumes:
+      - db-data:/var/lib/mysql   # attendance records survive restarts and upgrades
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      CAM_DB_URL: jdbc:mysql://db:3306/college_attendance?serverTimezone=UTC
+      CAM_DB_USER: attendance
+      CAM_DB_PASSWORD: ${CAM_DB_PASSWORD:-attendance_dev_only}
+      CAM_BOOTSTRAP_ADMIN_EMAIL: ${CAM_BOOTSTRAP_ADMIN_EMAIL:-admin@college.test}
+      CAM_BOOTSTRAP_ADMIN_PASSWORD: ${CAM_BOOTSTRAP_ADMIN_PASSWORD:-CampusAdmin-Change-123!}
+      CAM_DEMO_FACULTY_PASSWORD: ${CAM_DEMO_FACULTY_PASSWORD:-FacultyDemo-2026!}
+      CAM_DEMO_STUDENT_PASSWORD: ${CAM_DEMO_STUDENT_PASSWORD:-StudentDemo-2026!}
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
+      TZ: ${TZ:-UTC}
+    ports:
+      - "${CAM_BIND:-127.0.0.1}:${CAM_PORT:-8080}:8080"
+
+volumes:
+  db-data:

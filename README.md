@@ -1,54 +1,92 @@
-# College Attendance System
+# College Attendance System (CampusAttend)
 
-A browser application served by Java Spring Boot with persistent MySQL storage. Open **http://localhost:8080**. The frontend is HTML/CSS/JavaScript in `backend/src/main/resources/static/index.html`; all records use the Java API and MySQL.
+A web app for taking and tracking college attendance, with three kinds of accounts:
 
-## Install once on a Windows laptop
+- **Admin**: creates accounts, classes and subjects, enrolls students, assigns faculty, and sees every report.
+- **Faculty**: opens a class session, marks each student Present / Absent / Late, and sees reports for their own classes.
+- **Student**: sees their own attendance percentage, per-subject breakdown, classes and history.
 
-1. Install **JDK 21** (not only a JRE). Set `JAVA_HOME` to its folder and add `%JAVA_HOME%\bin` to PATH. Confirm `java -version` and `javac -version`.
-2. Install **MySQL Server 8**, including its `mysql` and `mysqldump` command-line tools. Start its Windows service, and retain your administrator password.
-3. Use a modern browser. Git is optional: clone this repository or use GitHub **Code → Download ZIP** and extract it.
+Everything one person saves is visible to the others straight away (see [How data stays in sync](#how-data-stays-in-sync)). It runs as one Java (Spring Boot) server with a MySQL database and opens in any modern browser at **http://localhost:8080**.
 
-Maven Wrapper downloads Maven and dependencies on the first run, so internet is required initially. Node, Docker, a separate web server, and a desktop/mobile app are not required.
+---
 
-## First-time database setup
+## Install with Docker (recommended, any computer)
 
-Open the MySQL command-line client as your database administrator:
+This is the easiest way: Docker sets up Java and MySQL for you.
 
-```powershell
-mysql -u root -p
-```
+1. **Install Docker Desktop** from <https://www.docker.com/products/docker-desktop/> and start it. On Linux, install Docker Engine with the Compose plugin.
+2. **Get the code**, either with Git:
+   ```bash
+   git clone https://github.com/pk7007/college-attendance-system.git
+   ```
+   or on GitHub with **Code → Download ZIP**, then unzip it.
+3. **Open a terminal in the project folder** (the one containing `docker-compose.yml`):
+   ```bash
+   cd college-attendance-system
+   ```
+4. **Optional: choose your own passwords.** Copy `.env.example` to `.env` and edit it. If you skip this, the demo defaults are used.
+5. **Start it:**
+   ```bash
+   docker compose up -d --build
+   ```
+   The first start downloads and builds everything and takes a few minutes. Later starts take seconds.
+6. **Open <http://localhost:8080>** and sign in with one of the [demo accounts](#demo-accounts).
 
-Edit `docs/create-database.sql` to replace the placeholder password with a unique local password, then execute those statements in the MySQL client. The account is restricted to the `college_attendance` database. Keep your edited credentials local; do not commit them. Flyway applies the versioned schema automatically when Java starts.
+| To… | Run |
+| --- | --- |
+| Stop (your data is kept) | `docker compose down` |
+| Start again | `docker compose up -d` |
+| Update after pulling new code | `git pull` then `docker compose up -d --build` |
+| See the server log | `docker compose logs -f app` |
+| Delete **all** data and start fresh | `docker compose down -v` |
 
-In PowerShell at the repository root:
+---
+
+## Install without Docker
+
+You need **JDK 21** (not just a JRE) and **MySQL Server 8**. Maven downloads itself on the first build, so the first run needs internet.
+
+### 1. Create the database (once)
+
+Open the MySQL client as the administrator (`mysql -u root -p`). Edit [`docs/create-database.sql`](docs/create-database.sql) to replace the placeholder password with one you choose, then run its statements. The tables are created automatically when the app starts.
+
+### 2a. Windows
+
+In PowerShell, in the project folder:
 
 ```powershell
 Copy-Item local-config.example.psd1 local-config.psd1
 notepad local-config.psd1
 ```
 
-Set `CAM_DB_PASSWORD` to the database account password you selected. Set host, port and database name if different. `local-config.psd1` is ignored by Git. The example uses MySQL port 3306. On the original development machine the isolated verification database uses port 3307.
-
-## Start and stop
+Set `CAM_DB_PASSWORD` to the password from step 1, save, then start:
 
 ```powershell
 .\start-local.ps1
 ```
 
-If Windows blocks local scripts, run `powershell -ExecutionPolicy Bypass -File .\start-local.ps1` for this one process. The script checks Java and MySQL TCP connectivity, builds/tests with Maven Wrapper, and launches the server. Database authentication and schema checks happen during application startup. Wait for `Started AttendanceApplication`, then visit http://localhost:8080. Keep the terminal open. Press **Ctrl+C** to stop Java; MySQL keeps the saved records.
+If Windows blocks the script, run `powershell -ExecutionPolicy Bypass -File .\start-local.ps1` instead.
 
-If port 8080 is occupied, stop your previous instance. For a different port set `PORT` in your environment and open that port instead. MySQL connection errors require checking the running service and local configuration; a TCP connection alone does not prove credentials are valid.
+### 2b. macOS / Linux
 
-To build without starting:
-
-```powershell
-cd backend
-.\mvnw.cmd verify
+```bash
+cp local-config.example.env local-config.env
+nano local-config.env
 ```
 
-## Local development accounts
+Set `CAM_DB_PASSWORD`, save, then start:
 
-The `dev` profile seeds these accounts and sample attendance on a fresh database:
+```bash
+./start-local.sh
+```
+
+Both scripts check Java and MySQL, build and test the app, then start it. Wait for `Started AttendanceApplication`, open <http://localhost:8080>, and keep the terminal open. **Ctrl+C** stops the server; MySQL keeps the records. Your `local-config.*` file is ignored by Git, so your password is never uploaded.
+
+---
+
+## Demo accounts
+
+With the default `dev` profile, a fresh database gets these accounts and one sample class, `CS-2A` / `CS201 Data Structures`, set in the current semester:
 
 | Role | Email | Password |
 | --- | --- | --- |
@@ -56,37 +94,68 @@ The `dev` profile seeds these accounts and sample attendance on a fresh database
 | Faculty | faculty@college.test | FacultyDemo-2026! |
 | Student | student@college.test | StudentDemo-2026! |
 
-These are sample accounts for local development. Configuration changes do not reset existing account passwords. Newly created users can change their temporary password from their workspace.
+**Try it:** sign in as faculty in one browser window and as the student in a private window. Save attendance as faculty, then refresh the student page: the new percentage appears straight away.
 
-## Workflows
+## Using it for a real college
 
-- Admin: create accounts; create departments, academic years, semesters, courses, sections and subjects; enroll students and assign faculty. **Manage records** edits names/codes and activates or deactivates users, courses, sections, subjects, departments, enrollments and assignments. Deactivation retains existing attendance.
-- Faculty: select an assigned class, open a dated session, review the entire roster, save attendance, or reopen a saved session to update it. Conflicting edits require reloading.
-- Student: view personal percentages and attendance history.
-- Admin/faculty: filter reports by date and section and download matching CSV. Faculty are restricted to assigned classes. Each export is limited to 5,000 rows; narrow the date range for larger datasets.
+1. In `.env` (Docker) or your `local-config` file, set `SPRING_PROFILES_ACTIVE=prod` so no demo data is created. Set your own admin email and a `CAM_BOOTSTRAP_ADMIN_PASSWORD` (12+ characters), and change the database passwords **before the first start**. In `prod` the admin is asked to choose a private password at first sign-in.
+2. Sign in as the admin. Under **People**, create faculty and student accounts with a temporary password each. Every new user must choose their own password at first sign-in.
+3. Under **Classes**, create a class. The form suggests the current academic year (June–May) and semester (Jun–Nov or Dec–May); change the dates to match your college. Then assign faculty and enroll students.
+4. Faculty use **Take attendance**: pick the class, check the date, **Open session**, mark students, **Save attendance**.
 
-Passwords are BCrypt hashes. Sessions use HttpOnly cookies, requests use CSRF tokens, and backend role/ownership checks enforce access. The local server binds to loopback. Attendance percentage counts PRESENT and LATE over completed recorded sessions; cancelled/open sessions are excluded.
+To let other computers on your network use it with Docker, set `CAM_BIND=0.0.0.0` in `.env` and open `http://<this-computer's-IP>:8080`. The app uses plain HTTP, so put it behind HTTPS before exposing it to the internet.
 
-## Backup and transfer
+## How data stays in sync
 
-GitHub transfers source code, **not database records**. A fresh laptop starts with a fresh database unless you restore a backup. Avoid changing records during a backup/restore.
+All three roles read the same database tables, so there is no copy to get out of date:
 
-```powershell
-mysqldump -u attendance -p --single-transaction --no-tablespaces --result-file=attendance.sql.backup college_attendance
-mysql -u attendance -p college_attendance
+- **Saved attendance** shows up immediately in the student's summary and history, and in admin and faculty reports. All of them use the same formula: *(Present + Late) ÷ completed sessions × 100*.
+- **Correcting a mark** changes every view. If two faculty members edit the same session at once, the second save is refused with "Someone else saved this session" instead of silently overwriting.
+- **Cancelling a session** removes it from every total. Opening a session with the same date and label reopens it.
+- **Deactivating** a department, semester, course, section, subject or faculty assignment under **Manage records** hides that class from admin, faculty and student class lists. Faculty can no longer take attendance for it, and saved attendance history is kept. Re-activating it, or re-entering the same codes in **Classes**, brings it back.
+- **Deactivating a user** signs them out on their next click and removes them from rosters. **Enrolling or assigning again** reactivates an earlier enrollment or assignment.
+- **Resetting a password** (People page) makes the user choose a new one before they can do anything else.
+
+These rules are covered by automated tests that sign in as an admin, faculty and students at the same time against a real MySQL database (see below).
+
+## Backups
+
+GitHub stores the **code, not the attendance records**. Back up the database regularly and never upload backups (they contain student data).
+
+```bash
+# Docker: back up, and restore into an empty database
+docker compose exec db sh -c 'mysqldump -u attendance -p"$MYSQL_PASSWORD" --single-transaction --no-tablespaces college_attendance' > attendance-backup.sql
+docker compose exec -T db sh -c 'mysql -u attendance -p"$MYSQL_PASSWORD" college_attendance' < attendance-backup.sql
 ```
 
-At the MySQL prompt on the destination, use `source C:/path/to/attendance.sql.backup;`. Restore into a newly created empty database before starting the application. Restoring into a populated database can replace data; retain a backup first. Do not upload backups containing student data to GitHub.
-
-## Verification and screenshots
-
-See [verification report](docs/verification.md) for actual checks and limitations. The optional integration script requires Python 3 **only for testing** and creates labelled test records in the local demo database:
-
 ```powershell
-python scripts/verify-local.py
+# Without Docker (Windows, macOS, Linux): back up
+mysqldump -u attendance -p --single-transaction --no-tablespaces --result-file=attendance-backup.sql college_attendance
+# ...and restore into an empty college_attendance database (create it with docs/create-database.sql first)
+mysql -u attendance -p college_attendance -e "source attendance-backup.sql"
 ```
 
-The images below are genuine captures of the integrated Java/MySQL application.
+## Troubleshooting
+
+| Problem | Fix |
+| --- | --- |
+| `port is already allocated` or 8080 in use | Stop the other program, or set `CAM_PORT=8081` in `.env` (Docker) / `PORT=8081` (scripts) and open that port. |
+| "Cannot reach the server" in the browser | The app is not running. Check `docker compose ps`, or the terminal running the start script. |
+| Can't sign in as admin on a new database | Make sure `CAM_BOOTSTRAP_ADMIN_EMAIL` / `CAM_BOOTSTRAP_ADMIN_PASSWORD` are set (12+ characters) and restart. Existing accounts are never overwritten. |
+| "Too many failed sign-in attempts" | Wait 15 minutes, or have an admin reset the password. |
+| "Session date must be within the semester" | The semester's dates have ended. Create the next semester under **Classes**. |
+| Changed DB password in `.env` but MySQL rejects it | MySQL keeps the first password. Use the old one, or `docker compose down -v` to wipe and start over. |
+
+## For developers
+
+- Code: `backend/` (Spring Boot 3.5, Java 21, JDBC, Flyway). The whole UI is `backend/src/main/resources/static/index.html`. See [architecture](docs/architecture.md).
+- `cd backend && ./mvnw verify` runs the unit tests. To also run the multi-user integration tests, point them at a **throwaway** MySQL database (it is wiped):
+  ```bash
+  CAM_IT_DB_URL='jdbc:mysql://127.0.0.1:3306/cams_it' CAM_IT_DB_USER=root CAM_IT_DB_PASSWORD=... ./mvnw verify
+  ```
+- GitHub Actions runs those integration tests against MySQL 8.4 and builds the Docker image on every push.
+- `python scripts/verify-local.py` is an extra smoke test against a running dev server (it adds labelled test records).
+- See the [verification report](docs/verification.md) for what was checked and how.
 
 ![Login](docs/screenshots/login.png)
 ![Administrator](docs/screenshots/admin.png)

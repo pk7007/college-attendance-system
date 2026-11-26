@@ -6,7 +6,19 @@ permissions:
   contents: read
 jobs:
   backend:
+    name: Tests against real MySQL
     runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_DATABASE: cams_it
+          MYSQL_ROOT_PASSWORD: ci-only-root-password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pci-only-root-password --silent"
+          --health-interval=5s --health-timeout=5s --health-retries=30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -14,6 +26,25 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: maven
-      - name: Test and package API
+      - name: Unit and multi-user integration tests, then package
         working-directory: backend
+        env:
+          CAM_IT_DB_URL: jdbc:mysql://127.0.0.1:3306/cams_it?serverTimezone=UTC
+          CAM_IT_DB_USER: root
+          CAM_IT_DB_PASSWORD: ci-only-root-password
         run: bash mvnw --batch-mode verify
+      - name: Check every integration test ran (they are skipped without MySQL)
+        working-directory: backend
+        run: |
+          report=target/surefire-reports/TEST-edu.college.attendance.DataReflectionIntegrationTest.xml
+          grep -q 'skipped="0"' "$report" && ! grep -q ' tests="0"' "$report"
+
+  docker:
+    name: Docker image builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the image used by docker compose
+        run: docker build --tag college-attendance:ci .
+      - name: Compose file is valid
+        run: docker compose config --quiet

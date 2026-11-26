@@ -1,0 +1,10 @@
+.git
+.github
+.local
+.env
+local-config.psd1
+local-config.env
+backend/target
+docs
+scripts
+*.log

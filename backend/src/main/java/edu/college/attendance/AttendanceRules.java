@@ -16,7 +16,7 @@ public final class AttendanceRules {
             if(!Set.of("PRESENT","ABSENT","LATE").contains(status)) throw new IllegalArgumentException("Status must be PRESENT, ABSENT, or LATE.");
             if(marks.put(mark.studentId(),status)!=null) throw new IllegalArgumentException("Duplicate student mark.");
         }
-        if(marks.size()!=roster.size()||!marks.keySet().equals(new HashSet<>(roster))) throw new IllegalArgumentException("Submit exactly one attendance mark for every active student in the class.");
+        if(marks.size()!=roster.size()||!marks.keySet().equals(new HashSet<>(roster))) throw new IllegalArgumentException("The class roster changed since this session was loaded. Review the reloaded roster and save again.");
         return Map.copyOf(marks);
     }
 }
