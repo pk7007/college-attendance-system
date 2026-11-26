@@ -1,50 +1,407 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CampusAttend</title><style>
-:root{font-family:Inter,"Segoe UI",Arial,sans-serif;color:#233f50;background:#f3f6f5}*{box-sizing:border-box}body{margin:0}button,input,select{font:inherit}button{cursor:pointer;border:0;border-radius:8px;padding:10px 13px;font-size:12px;font-weight:700}.primary{background:#257d73;color:#fff}.secondary{background:#e7f0ed;color:#29675f}.quiet{background:transparent;color:#627a82}.wrap{max-width:1120px;margin:auto;padding:0 24px}.top{height:72px;border-bottom:1px solid #e1eae8;display:flex;align-items:center;justify-content:space-between}.brand{font-size:19px;font-weight:800;color:#1c4256}.brand span{color:#338b7a}.user{display:flex;align-items:center;gap:12px;font-size:12px}.pill{background:#e5f1ec;color:#317566;border-radius:99px;padding:6px 10px;font-size:10px;font-weight:800;text-transform:lowercase}.content{padding:28px 0 48px}.login{min-height:100vh;display:grid;grid-template-columns:1fr 400px;align-items:center;gap:8vw;max-width:1050px;margin:auto;padding:36px}.login h1{font-size:56px;letter-spacing:-2px;color:#173d53;margin:20px 0 12px}.login p{color:#75878e;line-height:1.7}.card,.panel,.metric{background:white;border:1px solid #e1e9e7;border-radius:13px;padding:20px}.card{padding:28px}.eyebrow{font-size:10px;letter-spacing:1.5px;color:#358b78;font-weight:800}.field{display:grid;gap:7px;margin:13px 0;color:#536a73;font-size:12px;font-weight:650}.field input,.field select{height:40px;border:1px solid #dce5e2;border-radius:7px;padding:0 10px;background:#fff;color:#29495a}.full{width:100%}.error{background:#fff1ed;color:#a24035;padding:10px;border-radius:7px;font-size:12px}.success{background:#e7f5ee;color:#206752;padding:10px;border-radius:7px;font-size:12px}.heading{display:flex;justify-content:space-between;align-items:end;margin-bottom:18px}.heading h1{font-size:29px;letter-spacing:-1px;margin:5px 0}.muted{color:#829197;font-size:12px;line-height:1.6}.tabs{display:flex;gap:6px;margin:0 0 18px;flex-wrap:wrap}.tab{background:#e8efed;color:#567079}.tab.active{background:#214f60;color:white}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.metric{padding:16px}.metric span{font-size:10px;color:#819197;text-transform:uppercase;font-weight:750}.metric strong{display:block;font-size:28px;margin:9px 0 3px}.metric small{color:#86969a;font-size:10px}.panel{margin-top:14px}.panel h2{font-size:17px;margin:0}.panel-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}.form-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:0 12px}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;font-size:12px}td,th{text-align:left;padding:11px 8px;border-bottom:1px solid #edf1f0}th{font-size:10px;color:#819096;text-transform:uppercase}.roster{display:grid}.row{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #edf1f0;gap:12px}.person{display:grid;gap:3px}.person small{color:#849298;font-size:10px}.marks{display:flex;gap:5px}.mark{background:#f0f4f3;padding:7px 9px}.mark.on{background:#dff1e8;color:#206a55}.mark.absent.on{background:#ffebe8;color:#9c3e34}.mark.late.on{background:#fff4dd;color:#80611d}.panel+.panel{margin-top:14px}.bar{height:6px;background:#ecf1ef;border-radius:99px;margin-top:8px}.bar i{display:block;height:100%;background:#308d79;border-radius:99px}.subject{border:1px solid #e8efec;border-radius:9px;padding:13px}.subjects{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.actions{display:flex;gap:8px;align-items:center}.footer{text-align:center;padding:20px;color:#89989b;font-size:10px}.hidden{display:none!important}.form-note{font-size:11px;color:#7c8b91;margin:8px 0}
-@media(max-width:760px){.login{grid-template-columns:1fr;padding:22px;gap:10px}.login h1{font-size:42px}.card{max-width:500px;width:100%;margin:auto}.grid{grid-template-columns:repeat(2,1fr)}.wrap{padding:0 13px}.heading{align-items:start;flex-direction:column}.form-grid{grid-template-columns:1fr 1fr}.subjects{grid-template-columns:1fr 1fr}}@media(max-width:500px){.form-grid,.subjects{grid-template-columns:1fr}.user-name{display:none}.grid{gap:7px}.metric{padding:12px}.metric strong{font-size:23px}.panel{padding:14px}.row{align-items:start;flex-direction:column}.marks{margin-left:auto}}
-[aria-busy="true"]{cursor:progress}[aria-busy="true"]::before{content:"Loading�";position:fixed;right:20px;bottom:20px;padding:12px;background:#173b50;color:white;border-radius:8px;z-index:20}</style></head><body><div id="app"></div><script>
-(()=>{
-const app=document.getElementById('app');let user=null,view='home',classes=[],roster=[],marks={},currentAssignment=null,currentSession=null;
-const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const cookie=n=>document.cookie.split('; ').find(x=>x.startsWith(n+'='))?.slice(n.length+1);
-async function csrf(){const r=await fetch('/api/auth/csrf',{credentials:'include'});if(!r.ok)throw Error('Unable to start secure session.');const j=await r.json();return j.token||decodeURIComponent(cookie('XSRF-TOKEN')||'')}
-async function api(path,opts={}){const method=(opts.method||'GET').toUpperCase(),headers=new Headers(opts.headers||{});if(opts.body)headers.set('Content-Type','application/json');if(!['GET','HEAD','OPTIONS'].includes(method))headers.set('X-XSRF-TOKEN',await csrf());const r=await fetch('/api'+path,{...opts,method,headers,credentials:'include'});if(!r.ok){let e={};try{e=await r.json()}catch{}throw Error(e.error||`Request failed (${r.status})`)}if(r.status===204)return null;const type=r.headers.get('content-type')||'';return type.includes('text/csv')?r.blob():r.json()}
-function notice(message,kind='success'){const el=document.getElementById('notice');if(el){el.className=kind;el.textContent=message;el.classList.remove('hidden');setTimeout(()=>el.classList.add('hidden'),4500)}}
-function login(error=''){app.innerHTML=`<main class="login"><section><div class="brand">Campus<span>Attend</span></div><p class="eyebrow" style="margin-top:70px">COLLEGE ATTENDANCE</p><h1>Make every class count.</h1><p>Secure attendance for administrators, faculty, and students. Your records are stored in the college database.</p></section><section class="card"><p class="eyebrow">WELCOME</p><h2>Sign in</h2><p class="muted">Use the account provided by your administrator.</p><form id="login"><label class="field">Email<input name="email" type="email" autocomplete="username" required></label><label class="field">Password<input name="password" type="password" autocomplete="current-password" required></label>${error?`<p class="error">${esc(error)}</p>`:''}<button class="primary full">Sign in →</button></form><p class="form-note">For the seeded local demo credentials, see README.md.</p></section></main>`;
-document.getElementById('login').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.currentTarget);try{user=await api('/auth/login',{method:'POST',body:JSON.stringify({email:f.get('email'),password:f.get('password')})});view='home';render()}catch(x){login(x.message)}}}
-function shell(title,sub,body){app.innerHTML=`<div class="wrap"><header class="top"><div class="brand">Campus<span>Attend</span></div><div class="user"><span class="pill">${esc(user.role.toLowerCase())}</span><span class="user-name">${esc(user.displayName)}</span><button class="quiet" id="signout">Sign out</button></div></header><main class="content"><div class="heading"><div><p class="eyebrow">${esc(user.role)} WORKSPACE</p><h1>${esc(title)}</h1><p class="muted">${esc(sub)}</p></div></div><div id="notice" class="hidden"></div>${user.mustChangePassword?`<section class="panel"><h2>Change temporary password</h2><form id="password-form" class="form-grid"><label class="field">Current password<input name="currentPassword" type="password" required></label><label class="field">New password (12+ characters)<input name="newPassword" type="password" minlength="12" required></label><button class="primary">Update password</button></form></section>`:''}${nav()}${body}</main><footer class="footer">CampusAttend · Attendance is tied to a class session · Times shown in institution timezone</footer></div>`;document.getElementById('signout').onclick=async()=>{try{await api('/auth/logout',{method:'POST'})}catch{}user=null;login()};const pf=document.getElementById('password-form');if(pf)pf.onsubmit=async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(pf));try{await api('/auth/password',{method:'POST',body:JSON.stringify(f)});user.mustChangePassword=false;notice('Password updated.')}catch(x){notice(x.message,'error')}};document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{view=b.dataset.view;render()})}
-function nav(){const v=user.role==='ADMIN'?[['home','Overview'],['people','People'],['classes','Classes'],['manage','Manage records'],['reports','Reports']]:user.role==='FACULTY'?[['home','Overview'],['take','Take attendance'],['reports','Reports']]:[['home','Summary'],['history','History']];return `<nav class="tabs">${v.map(([id,label])=>`<button class="tab ${view===id?'active':''}" data-view="${id}">${label}</button>`).join('')}</nav>`}
-const metric=(label,val,small)=>`<article class="metric"><span>${label}</span><strong>${val??'—'}</strong><small>${small}</small></article>`;
-function table(cols,rows){return `<div class="table-wrap"><table><thead><tr>${cols.map(x=>`<th>${x}</th>`).join('')}</tr></thead><tbody>${rows.length?rows.map(row=>`<tr>${row.map(x=>`<td>${x??'—'}</td>`).join('')}</tr>`).join(''):`<tr><td colspan="${cols.length}" class="muted">No records yet.</td></tr>`}</tbody></table></div>`}
-async function render(){app.setAttribute('aria-busy','true');if(!user){login();return}try{if(user.role==='ADMIN')await admin();else if(user.role==='FACULTY')await faculty();else await student();app.removeAttribute('aria-busy')}catch(e){shell('Unable to load this view','Check the service and try again.',`<p class="error">${esc(e.message)}</p><button class="secondary" onclick="location.reload()">Reload</button>`)}}
-async function admin(){if(view==='manage'){await manageView();return}if(view==='people'){const users=await api('/admin/users');shell('People','Create and manage campus accounts.',`<section class="panel"><h2>Create user account</h2><form id="user-form" class="form-grid"><label class="field">Full name<input name="displayName" required></label><label class="field">Email<input name="email" type="email" required></label><label class="field">Role<select name="role"><option>STUDENT</option><option>FACULTY</option><option>ADMIN</option></select></label><label class="field">Temporary password (12+ characters)<input name="password" type="password" minlength="12" required></label><button class="primary">Create account</button></form></section><section class="panel"><div class="panel-head"><h2>Campus users</h2><span class="pill">${users.length} accounts</span></div>${table(['Name','Email','Role','Status'],users.map(u=>[esc(u.displayName),esc(u.email),esc(u.role),u.active?'Active':'Inactive']))}</section>`);document.getElementById('user-form').onsubmit=async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.currentTarget));try{await api('/admin/users',{method:'POST',body:JSON.stringify(f)});notice('User created.');render()}catch(x){notice(x.message,'error')}};return}
-if(view==='classes'){const [rows,users,enrollments]=await Promise.all([api('/admin/classes'),api('/admin/users'),api('/admin/enrollments')]);const students=users.filter(u=>u.role==='STUDENT'&&u.active),faculty=users.filter(u=>u.role==='FACULTY'&&u.active);shell('Classes & setup','Create the academic structure, then enroll students and assign faculty.',`<section class="panel"><h2>Create class and subject</h2><form id="class-form" class="form-grid"><label class="field">Department code<input name="departmentCode" value="CS" required></label><label class="field">Department name<input name="departmentName" value="Computer Science" required></label><label class="field">Academic year<input name="yearLabel" value="2026-2027" required></label><label class="field">Year starts<input name="yearStart" type="date" value="2026-06-01" required></label><label class="field">Year ends<input name="yearEnd" type="date" value="2027-05-31" required></label><label class="field">Semester<input name="semester" value="Semester 1" required></label><label class="field">Semester starts<input name="semesterStart" type="date" value="2026-06-01" required></label><label class="field">Semester ends<input name="semesterEnd" type="date" value="2026-12-31" required></label><label class="field">Course code<input name="courseCode" value="BSC-CS" required></label><label class="field">Course name<input name="courseName" value="B.Sc. Computer Science" required></label><label class="field">Section<input name="sectionCode" value="CS-2A" required></label><label class="field">Subject code<input name="subjectCode" value="CS201" required></label><label class="field">Subject name<input name="subjectName" value="Data Structures" required></label><button class="primary">Create class</button></form></section><section class="panel"><div class="panel-head"><h2>Classes and subjects</h2></div>${table(['Course','Section','Semester','Subject','Code'],rows.map(r=>[esc(r.courseName),esc(r.sectionCode),esc(r.semester),esc(r.subjectName),esc(r.subjectCode)]))}</section><section class="panel"><h2>Assign faculty to a class</h2><form id="assign-form" class="form-grid"><label class="field">Faculty<select name="userId" required>${faculty.map(u=>`<option value="${u.id}">${esc(u.displayName)} · ${esc(u.email)}</option>`).join('')}</select></label><label class="field">Class<select name="sectionId" required>${rows.map(r=>`<option value="${r.sectionId}" data-subject="${r.subjectId}">${esc(r.sectionCode)} · ${esc(r.subjectName)}</option>`).join('')}</select></label><input id="subject-id" name="subjectId" type="hidden" value="${rows[0]?.subjectId||''}"><button class="secondary">Assign faculty</button></form></section><section class="panel"><h2>Enroll a student</h2><form id="enroll-form" class="form-grid"><label class="field">Student<select name="studentId" required>${students.map(u=>`<option value="${u.id}">${esc(u.displayName)} · ${esc(u.email)}</option>`).join('')}</select></label><label class="field">Section<select name="sectionId" required>${rows.map(r=>`<option value="${r.sectionId}">${esc(r.sectionCode)} · ${esc(r.courseName)}</option>`).join('')}</select></label><button class="secondary">Enroll student</button></form><p class="form-note">${enrollments.length} enrollment records.</p></section>`);
-document.getElementById('class-form').onsubmit=async e=>{e.preventDefault();try{const f=Object.fromEntries(new FormData(e.currentTarget));await api('/admin/academic/setup',{method:'POST',body:JSON.stringify(f)});notice('Academic class created.');render()}catch(x){notice(x.message,'error')}};const af=document.getElementById('assign-form');af.onsubmit=async e=>{e.preventDefault();const f=new FormData(af);try{await api('/admin/assignments',{method:'POST',body:JSON.stringify({userId:Number(f.get('userId')),sectionId:Number(f.get('sectionId')),subjectId:Number(f.get('subjectId'))})});notice('Faculty assigned.');render()}catch(x){notice(x.message,'error')}};const section=af.elements.sectionId;section.onchange=()=>{document.getElementById('subject-id').value=section.selectedOptions[0].dataset.subject};const ef=document.getElementById('enroll-form');ef.onsubmit=async e=>{e.preventDefault();const f=new FormData(ef);try{await api('/admin/enrollments',{method:'POST',body:JSON.stringify({studentId:Number(f.get('studentId')),sectionId:Number(f.get('sectionId'))})});notice('Student enrolled.');render()}catch(x){notice(x.message,'error')}};return}
-if(view==='reports'){await reportView();return}
-const [users,rows]=await Promise.all([api('/admin/users'),api('/admin/classes')]);shell('Campus overview','Manage accounts, courses, and attendance in one place.',`<section class="grid">${metric('Students',users.filter(u=>u.role==='STUDENT'&&u.active).length,'Active student accounts')}${metric('Faculty',users.filter(u=>u.role==='FACULTY'&&u.active).length,'Teaching accounts')}${metric('Class sections',rows.length,'Sections and subjects')}${metric('Users',users.length,'Campus accounts')}</section><section class="panel"><div class="panel-head"><h2>Quick setup</h2><button class="secondary" data-view="classes">Set up classes</button></div><p class="muted">Create students and faculty accounts, add an academic class, then enroll students and assign faculty.</p></section>`)}
-let reportFilters={from:'',to:'',sectionId:''};
-async function reportView(){
- const options=await api(user.role==='ADMIN'?'/admin/classes':'/faculty/classes');
- const query=new URLSearchParams(Object.entries(reportFilters).filter(([k,v])=>v)).toString();
- const rows=await api('/reports/attendance?'+query);
- shell('Attendance reports','Filter completed attendance by date and class. Up to 5,000 rows per export.',`<section class="panel"><form id="filters" class="form-grid"><label class="field">From<input name="from" type="date" value="${esc(reportFilters.from)}"></label><label class="field">To<input name="to" type="date" value="${esc(reportFilters.to)}"></label><label class="field">Section<select name="sectionId"><option value="">All assigned sections</option>${[...new Map(options.map(c=>[c.sectionId,c])).values()].map(c=>`<option value="${c.sectionId}" ${String(c.sectionId)===reportFilters.sectionId?'selected':''}>${esc(c.courseName)} � ${esc(c.sectionCode)}</option>`).join('')}</select></label><button class="primary">Apply filters</button></form><button id="csv" class="secondary">Download CSV</button>${table(['Date','Course','Section','Subject','Student','Status'],rows.map(r=>[esc(r.sessionDate),esc(r.courseName),esc(r.sectionCode),esc(r.subjectName),esc(r.studentName),esc(r.status)]))}</section>`);
- document.getElementById('filters').onsubmit=async e=>{e.preventDefault();reportFilters=Object.fromEntries(new FormData(e.currentTarget));if(reportFilters.from&&reportFilters.to&&reportFilters.from>reportFilters.to){notice('From date must precede To date.','error');return}await render()};
- document.getElementById('csv').onclick=async()=>{try{const blob=await api('/reports/attendance.csv?'+query);const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='attendance-report.csv';a.click();URL.revokeObjectURL(url)}catch(e){notice(e.message,'error')}};
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CampusAttend</title>
+<style>
+:root{font-family:Inter,"Segoe UI",Arial,sans-serif;color:#233f50;background:#f3f6f5}
+*{box-sizing:border-box}body{margin:0;background:#f3f6f5}
+button,input,select{font:inherit}
+button{cursor:pointer;border:0;border-radius:8px;padding:10px 13px;font-size:12px;font-weight:700}
+button:disabled{opacity:.5;cursor:not-allowed}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #8fc9bd;outline-offset:1px}
+.primary{background:#257d73;color:#fff}.secondary{background:#e7f0ed;color:#29675f}.danger{background:#fbe9e6;color:#9c3e34}.quiet{background:transparent;color:#627a82}
+.wrap{max-width:1120px;margin:auto;padding:0 24px}
+.top{min-height:72px;border-bottom:1px solid #e1eae8;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.brand{font-size:19px;font-weight:800;color:#1c4256}.brand span{color:#338b7a}
+.user{display:flex;align-items:center;gap:12px;font-size:12px}
+.pill{background:#e5f1ec;color:#317566;border-radius:99px;padding:6px 10px;font-size:10px;font-weight:800;text-transform:lowercase;white-space:nowrap}
+.pill.warn{background:#fff4dd;color:#80611d}.pill.off{background:#f0f0f0;color:#666}
+.content{padding:28px 0 48px}
+.login{min-height:100vh;display:grid;grid-template-columns:1fr 400px;align-items:center;gap:8vw;max-width:1050px;margin:auto;padding:36px}
+.login h1{font-size:56px;letter-spacing:-2px;color:#173d53;margin:20px 0 12px}.login p{color:#6f8086;line-height:1.7}
+.card,.panel,.metric{background:#fff;border:1px solid #e1e9e7;border-radius:13px;padding:20px}.card{padding:28px}
+.eyebrow{font-size:10px;letter-spacing:1.5px;color:#2f7f6d;font-weight:800;text-transform:uppercase}
+.field{display:grid;gap:7px;margin:13px 0;color:#536a73;font-size:12px;font-weight:650}
+.inline-select{font-size:12px}
+.field input,.field select,.inline-select{height:40px;border:1px solid #dce5e2;border-radius:7px;padding:0 10px;background:#fff;color:#29495a;min-width:0}
+.full{width:100%}
+.error{background:#fff1ed;color:#a24035;padding:10px;border-radius:7px;font-size:12px}
+.success{background:#e7f5ee;color:#206752;padding:10px;border-radius:7px;font-size:12px}
+#notice{position:sticky;top:8px;z-index:10;margin-bottom:12px}
+.heading{display:flex;justify-content:space-between;align-items:end;margin-bottom:18px}.heading h1{font-size:29px;letter-spacing:-1px;margin:5px 0}
+.muted{color:#6f8086;font-size:12px;line-height:1.6}
+.tabs{display:flex;gap:6px;margin:0 0 18px;flex-wrap:wrap}.tab{background:#e8efed;color:#567079}.tab.active{background:#214f60;color:#fff}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.metric{padding:16px}.metric span{font-size:10px;color:#6f8086;text-transform:uppercase;font-weight:750}.metric strong{display:block;font-size:28px;margin:9px 0 3px}.metric small{color:#6f8086;font-size:10px}
+.panel{margin-top:14px}.panel h2{font-size:17px;margin:0 0 6px}
+.panel-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+.form-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:0 12px;align-items:end}.form-grid>button{margin:13px 0}
+.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;font-size:12px}
+td,th{text-align:left;padding:11px 8px;border-bottom:1px solid #edf1f0;vertical-align:middle}th{font-size:10px;color:#6f8086;text-transform:uppercase}
+.row{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #edf1f0;gap:12px}
+.person{display:grid;gap:3px}.person small{color:#6f8086;font-size:10px}
+.marks{display:flex;gap:5px}.mark{background:#f0f4f3;color:#41606b;padding:7px 9px}
+.mark.on{background:#dff1e8;color:#206a55;box-shadow:inset 0 0 0 1px #9fd2bd}.mark.absent.on{background:#ffebe8;color:#9c3e34;box-shadow:inset 0 0 0 1px #f0b2a8}.mark.late.on{background:#fff4dd;color:#80611d;box-shadow:inset 0 0 0 1px #e8cf91}
+.bar{height:6px;background:#ecf1ef;border-radius:99px;margin-top:8px}.bar i{display:block;height:100%;background:#308d79;border-radius:99px}
+.subject{border:1px solid #e8efec;border-radius:9px;padding:13px}.subjects{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.footer{text-align:center;padding:20px;color:#6f8086;font-size:10px}
+.hidden{display:none!important}.form-note{font-size:11px;color:#6f8086;margin:8px 0}
+.record{display:grid;grid-template-columns:2fr 1.4fr 1fr auto;gap:10px;align-items:end;border-bottom:1px solid #edf1f0}
+.record .field{margin:10px 0}.record button{margin:10px 0}
+[aria-busy="true"]::after{content:"Loading…";position:fixed;right:20px;bottom:20px;padding:12px;background:#173b50;color:#fff;border-radius:8px;z-index:20}
+@media(max-width:760px){.login{grid-template-columns:1fr;padding:22px;gap:10px}.login h1{font-size:42px}.card{max-width:500px;width:100%;margin:auto}.grid{grid-template-columns:repeat(2,1fr)}.wrap{padding:0 16px}.heading{align-items:start;flex-direction:column}.form-grid{grid-template-columns:1fr 1fr}.subjects{grid-template-columns:1fr 1fr}.record{grid-template-columns:1fr 1fr}}
+@media(max-width:500px){.form-grid,.subjects,.record{grid-template-columns:1fr}.user-name{display:none}.grid{gap:7px}.metric{padding:12px}.metric strong{font-size:23px}.panel{padding:14px}.row{align-items:start;flex-direction:column}.marks{margin-left:auto}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+(() => {
+'use strict';
+const app = document.getElementById('app');
+let user = null, view = 'home', flash = null, noticeTimer = null;
+// Per-view state that survives re-rendering.
+let reportFilters = {from: '', to: '', sectionId: ''}, manageEntity = 'users', historyPage = 0;
+let currentAssignment = null, currentSession = null;
+
+// ---- helpers --------------------------------------------------------------------------------
+const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+const $ = id => document.getElementById(id);
+/** Today's date in the browser's own timezone (toISOString() alone would give the UTC date). */
+const localDate = (d = new Date()) => { const x = new Date(d); x.setMinutes(x.getMinutes() - x.getTimezoneOffset()); return x.toISOString().slice(0, 10); };
+const unique = (rows, key) => [...new Map(rows.map(r => [r[key], r])).values()];
+/** "1 class", "2 classes". */
+const plural = (n, one, many = one + 's') => `${n} ${n === 1 ? one : many}`;
+const pct = v => v == null ? '—' : `${Number(v)}%`;
+const statusPill = s => `<span class="pill ${s === 'CANCELLED' ? 'off' : s === 'OPEN' ? 'warn' : ''}">${esc(String(s).toLowerCase())}</span>`;
+
+class ApiError extends Error { constructor(message, status) { super(message); this.status = status; } }
+
+async function csrfToken() {
+  const r = await fetch('/api/auth/csrf', {credentials: 'same-origin'});
+  if (!r.ok) throw new ApiError('Unable to start a secure session. Reload the page.', r.status);
+  return (await r.json()).token;
 }
-let manageEntity='users';
-async function manageView(){
- const resources={users:'Students and faculty',departments:'Departments',courses:'Courses',subjects:'Subjects',sections:'Sections',student_enrollments:'Enrollments',faculty_assignments:'Faculty assignments'};
- const rows=await api('/admin/manage/'+manageEntity);
- const links=['student_enrollments','faculty_assignments'].includes(manageEntity);
- shell('Manage records','Edit names/codes and activate or deactivate records. Saved attendance is retained.',`<section class="panel"><label class="field">Resource<select id="resource">${Object.entries(resources).map(([k,v])=>`<option value="${k}" ${k===manageEntity?'selected':''}>${v}</option>`).join('')}</select></label>${rows.map(r=>`<form class="record-form form-grid" data-id="${r.id}"><label class="field">${esc(r.label)}<input name="value" value="${esc(String(r.value))}" ${links?'readonly':''} required></label><label class="field">Status<select name="active"><option value="true" ${r.active?'selected':''}>Active</option><option value="false" ${!r.active?'selected':''}>Inactive</option></select></label><button class="secondary">Save</button></form>`).join('')||'<p>No records yet.</p>'}</section>`);
- document.getElementById('resource').onchange=async e=>{manageEntity=e.target.value;await render()};
- document.querySelectorAll('.record-form').forEach(form=>form.onsubmit=async e=>{e.preventDefault();const f=new FormData(form);try{await api('/admin/manage/'+manageEntity+'/'+form.dataset.id,{method:'PUT',body:JSON.stringify({value:f.get('value'),active:f.get('active')==='true'})});notice('Record saved.')}catch(e){notice(e.message,'error')}});
+
+async function api(path, opts = {}) {
+  const method = (opts.method || 'GET').toUpperCase(), headers = new Headers(opts.headers || {});
+  if (opts.body !== undefined) headers.set('Content-Type', 'application/json');
+  if (!['GET', 'HEAD'].includes(method)) headers.set('X-XSRF-TOKEN', await csrfToken());
+  let r;
+  try { r = await fetch('/api' + path, {method, headers, body: opts.body === undefined ? undefined : JSON.stringify(opts.body), credentials: 'same-origin'}); }
+  catch { throw new ApiError('Cannot reach the server. Check that it is running and try again.', 0); }
+  if (!r.ok) {
+    let e = {};
+    try { e = await r.json(); } catch { /* not JSON */ }
+    throw new ApiError(e.error || `Request failed (${r.status}).`, r.status);
+  }
+  const type = r.headers.get('content-type') || '';
+  if (type.includes('text/csv')) return r.blob();
+  return type.includes('json') ? r.json() : null;
 }
-async function faculty(){if(view==='reports'){await reportView();return}
-classes=await api('/faculty/classes');if(view==='take'){const c=classes.find(x=>x.assignmentId===currentAssignment)||classes[0];if(!c){shell('Take attendance','Record attendance for an assigned class.','<section class="panel muted">No classes are assigned yet. Ask an administrator to assign one.</section>');return}const sessions=await api(`/faculty/classes/${c.assignmentId}/sessions`);shell('Take attendance','Choose a class session and mark every enrolled student.',`<section class="panel"><div class="form-grid"><label class="field">Class<select id="class-choice">${classes.map(x=>`<option value="${x.assignmentId}" ${x.assignmentId===c.assignmentId?'selected':''}>${esc(x.sectionCode)} · ${esc(x.subjectName)}</option>`).join('')}</select></label><label class="field">Date<input id="class-date" type="date" value="${new Date().toISOString().slice(0,10)}"></label><label class="field">Session label<input id="class-label" value="Lecture ${sessions.length+1}"></label></div><div class="actions"><button id="open-session" class="secondary">Open session</button><select id="saved-session"><option value="">Continue saved session</option>${sessions.map(s=>`<option value="${s.id}">${esc(s.sessionDate)} · ${esc(s.sessionLabel)} · ${esc(s.state)}</option>`).join('')}</select></div><div id="roster"></div></section>`);document.getElementById('class-choice').onchange=e=>{currentAssignment=Number(e.target.value);render()};document.getElementById('open-session').onclick=async()=>{try{const out=await api(`/faculty/classes/${c.assignmentId}/sessions`,{method:'POST',body:JSON.stringify({sessionDate:document.getElementById('class-date').value,sessionLabel:document.getElementById('class-label').value})});currentSession=out.id;await loadRoster(c.assignmentId,out.id);notice('Session ready. Mark every student and save.')}catch(e){notice(e.message,'error')}};document.getElementById('saved-session').onchange=async e=>{if(e.target.value){currentSession=Number(e.target.value);await loadRoster(c.assignmentId,currentSession)}};return}
-shell('Faculty overview','Your assigned teaching sections.',`<section class="grid">${metric('Assigned classes',classes.length,'Current assignments')}${metric('Workspace','Ready','Attendance saves to MySQL')}${metric('Student identity','Scoped','Only enrolled rosters are shown')}${metric('Timezone','Local','Class dates are calendar dates')}</section><section class="panel"><h2>Your classes</h2>${table(['Course','Section','Subject','Semester'],classes.map(c=>[esc(c.courseName),esc(c.sectionCode),esc(c.subjectName),esc(c.semester)]))}<button class="primary" data-view="take">Take attendance</button></section>`)}
-async function loadRoster(assignmentId,sessionId){const [r,s]=await Promise.all([api(`/faculty/classes/${assignmentId}/roster`),api(`/faculty/sessions/${sessionId}`)]);roster=r;currentSession=sessionId;let expectedVersion=Number(s.version||0);marks=Object.fromEntries(r.map(u=>[u.studentId,s.attendance?.find(m=>m.studentId===u.studentId)?.status||'PRESENT']));const area=document.getElementById('roster');area.innerHTML=`<h2 style="margin-top:22px">Class roster · ${roster.length} students</h2><div class="roster">${roster.map(u=>`<div class="row"><div class="person"><b>${esc(u.displayName)}</b><small>${esc(u.email)}</small></div><div class="marks">${['PRESENT','ABSENT','LATE'].map(x=>`<button class="mark ${x.toLowerCase()} ${marks[u.studentId]===x?'on':''}" data-user="${u.studentId}" data-mark="${x}">${x[0]+x.slice(1).toLowerCase()}</button>`).join('')}</div></div>`).join('')}</div><div class="panel-head" style="margin-top:16px"><span class="muted">Review marks before saving.</span><button id="save-attendance" class="primary">Save attendance</button></div>`;area.querySelectorAll('[data-user]').forEach(b=>b.onclick=()=>{marks[b.dataset.user]=b.dataset.mark;area.querySelectorAll(`[data-user="${b.dataset.user}"]`).forEach(x=>x.classList.remove('on'));b.classList.add('on')});document.getElementById('save-attendance').onclick=async()=>{try{await api(`/faculty/sessions/${sessionId}/attendance`,{method:'PUT',body:JSON.stringify({expectedVersion,records:roster.map(u=>({studentId:u.studentId,status:marks[u.studentId]}))})});expectedVersion++;notice('Attendance saved successfully.')}catch(e){notice(e.message,'error')}}}
-async function student(){if(view==='history'){const h=await api('/student/attendance/history?page=0&size=100');shell('Attendance history','Your completed class sessions.',`<section class="panel">${table(['Date','Session','Subject','Code','Status'],h.content.map(r=>[esc(r.sessionDate),esc(r.sessionLabel),esc(r.subjectName),esc(r.subjectCode),esc(r.status)]))}</section>`);return}const s=await api('/student/attendance/summary');shell('Your attendance','Only your own saved attendance is shown here.',`<section class="grid">${metric('Overall attendance',s.percentage==null?'—':s.percentage+'%',`Across ${s.total} completed sessions`)}${metric('Present',s.present,'Marked present')}${metric('Late',s.late,'Counts as attended')}${metric('Absent',s.absent,'Marked absent')}</section><p class="muted">${esc(s.formula)}</p><section class="panel"><h2>By subject</h2><div class="subjects">${s.subjects.length?s.subjects.map(x=>`<article class="subject"><b>${esc(x.subjectName)}</b><p class="muted">${esc(x.subjectCode)} · ${x.attended}/${x.total} attended</p><div class="bar"><i style="width:${x.percentage||0}%"></i></div><small>${x.percentage}%</small></article>`).join(''):'<p class="muted">No completed sessions yet.</p>'}</div></section><section class="panel"><button class="secondary" data-view="history">View attendance history</button></section>`)}
-api('/auth/me').then(me=>{user=me;render()}).catch(()=>login());
+
+function notice(message, kind = 'success') {
+  const el = $('notice');
+  if (!el) { flash = {message, kind}; return; }
+  clearTimeout(noticeTimer);
+  el.className = kind;
+  el.setAttribute('role', kind === 'error' ? 'alert' : 'status');
+  el.textContent = message;
+  noticeTimer = setTimeout(() => el.classList.add('hidden'), kind === 'error' ? 8000 : 4500);
+}
+
+/** Runs a write action, then re-renders so every list on screen shows the saved data. */
+async function act(button, work, success) {
+  if (button) button.disabled = true;
+  try { await work(); if (success) flash = {message: success, kind: 'success'}; await render(); }
+  catch (e) { if (!handleAuthError(e)) notice(e.message, 'error'); }
+  finally { if (button && document.body.contains(button)) button.disabled = false; }
+}
+
+function handleAuthError(e) {
+  if (e.status === 401) { user = null; login('Your session ended. Please sign in again.'); return true; }
+  if (e.status === 403 && /temporary password/i.test(e.message)) { user.mustChangePassword = true; render(); return true; }
+  return false;
+}
+
+const metric = (label, val, small) => `<article class="metric"><span>${esc(label)}</span><strong>${esc(val ?? '—')}</strong><small>${esc(small)}</small></article>`;
+/** Cells must already be escaped HTML. */
+function table(cols, rows, empty = 'No records yet.') {
+  return `<div class="table-wrap"><table><thead><tr>${cols.map(c => `<th scope="col">${esc(c)}</th>`).join('')}</tr></thead><tbody>${
+    rows.length ? rows.map(row => `<tr>${row.map(x => `<td>${x ?? '—'}</td>`).join('')}</tr>`).join('')
+                : `<tr><td colspan="${cols.length}" class="muted">${esc(empty)}</td></tr>`}</tbody></table></div>`;
+}
+const options = (rows, value, label, selected) => rows.map(r => `<option value="${esc(value(r))}" ${String(value(r)) === String(selected) ? 'selected' : ''}>${esc(label(r))}</option>`).join('');
+
+// ---- layout ---------------------------------------------------------------------------------
+function login(error = '') {
+  app.removeAttribute('aria-busy');
+  app.innerHTML = `<main class="login"><section><div class="brand">Campus<span>Attend</span></div><p class="eyebrow" style="margin-top:70px">College attendance</p><h1>Make every class count.</h1><p>Secure attendance for administrators, faculty, and students. Your records are stored in the college database.</p></section>
+  <section class="card"><p class="eyebrow">Welcome</p><h2>Sign in</h2><p class="muted">Use the account provided by your administrator.</p>
+  <form id="login"><label class="field">Email<input name="email" type="email" autocomplete="username" required></label><label class="field">Password<input name="password" type="password" autocomplete="current-password" required></label>
+  ${error ? `<p class="error" role="alert">${esc(error)}</p>` : ''}<button class="primary full">Sign in →</button></form>
+  <p class="form-note">For the local demo accounts, see README.md.</p></section></main>`;
+  const form = $('login');
+  form.onsubmit = async e => {
+    e.preventDefault();
+    const button = form.querySelector('button'); button.disabled = true;
+    const f = new FormData(form);
+    try { user = await api('/auth/login', {method: 'POST', body: {email: f.get('email'), password: f.get('password')}}); view = 'home'; resetViewState(); await render(); }
+    catch (x) { login(x.message); }
+  };
+  form.elements.email.focus();
+}
+
+function resetViewState() { reportFilters = {from: '', to: '', sectionId: ''}; manageEntity = 'users'; historyPage = 0; currentAssignment = null; currentSession = null; }
+
+function tabs() {
+  const v = user.role === 'ADMIN' ? [['home', 'Overview'], ['people', 'People'], ['classes', 'Classes'], ['manage', 'Manage records'], ['reports', 'Reports']]
+          : user.role === 'FACULTY' ? [['home', 'Overview'], ['take', 'Take attendance'], ['reports', 'Reports']]
+          : [['home', 'Summary'], ['history', 'History']];
+  return `<nav class="tabs" aria-label="Sections">${v.map(([id, label]) => `<button class="tab ${view === id ? 'active' : ''}" data-view="${id}" ${view === id ? 'aria-current="page"' : ''}>${label}</button>`).join('')}</nav>`;
+}
+
+function shell(title, sub, body, showTabs = true) {
+  app.innerHTML = `<div class="wrap"><header class="top"><div class="brand">Campus<span>Attend</span></div><div class="user"><span class="pill">${esc(user.role.toLowerCase())}</span><span class="user-name">${esc(user.displayName)}</span><button class="quiet" id="signout">Sign out</button></div></header>
+  <main class="content"><div class="heading"><div><p class="eyebrow">${esc(user.role)} workspace</p><h1>${esc(title)}</h1><p class="muted">${esc(sub)}</p></div></div>
+  <div id="notice" class="hidden"></div>${showTabs ? tabs() : ''}${body}</main>
+  <footer class="footer">CampusAttend · Attendance is recorded per class session · Dates are calendar dates</footer></div>`;
+  $('signout').onclick = async () => { try { await api('/auth/logout', {method: 'POST'}); } catch { /* already signed out */ } user = null; login(); };
+  document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => { view = b.dataset.view; render(); });
+  if (flash) { const f = flash; flash = null; notice(f.message, f.kind); }
+}
+
+async function render() {
+  if (!user) { login(); return; }
+  app.setAttribute('aria-busy', 'true');
+  try {
+    if (user.mustChangePassword) passwordView();
+    else if (user.role === 'ADMIN') await admin();
+    else if (user.role === 'FACULTY') await faculty();
+    else await student();
+  } catch (e) {
+    if (!handleAuthError(e)) {
+      shell('Unable to load this view', 'Check that the server and database are running, then try again.', `<section class="panel"><p class="error" role="alert">${esc(e.message)}</p><button class="secondary" id="retry">Try again</button></section>`);
+      $('retry').onclick = () => render();
+    }
+  } finally { app.removeAttribute('aria-busy'); }
+}
+
+function passwordView() {
+  shell('Choose your password', 'Your administrator gave you a temporary password. Choose your own to continue.', `<section class="panel"><h2>Change temporary password</h2>
+  <form id="password-form" class="form-grid"><label class="field">Current (temporary) password<input name="currentPassword" type="password" autocomplete="current-password" required></label>
+  <label class="field">New password (12+ characters)<input name="newPassword" type="password" minlength="12" maxlength="64" autocomplete="new-password" required></label>
+  <label class="field">Repeat new password<input name="repeat" type="password" minlength="12" maxlength="64" autocomplete="new-password" required></label><button class="primary">Update password</button></form></section>`, false);
+  const form = $('password-form');
+  form.onsubmit = e => {
+    e.preventDefault();
+    const f = Object.fromEntries(new FormData(form));
+    if (f.newPassword !== f.repeat) { notice('The new passwords do not match.', 'error'); return; }
+    act(form.querySelector('button'), async () => { await api('/auth/password', {method: 'POST', body: {currentPassword: f.currentPassword, newPassword: f.newPassword}}); user.mustChangePassword = false; }, 'Password updated.');
+  };
+}
+
+// ---- admin ----------------------------------------------------------------------------------
+async function admin() {
+  if (view === 'people') return peopleView();
+  if (view === 'classes') return classesView();
+  if (view === 'manage') return manageView();
+  if (view === 'reports') return reportView();
+  const [users, rows] = await Promise.all([api('/admin/users'), api('/admin/classes')]);
+  const active = role => users.filter(u => u.role === role && u.active).length;
+  const unassigned = rows.filter(r => !r.faculty).length, empty = unique(rows, 'sectionId').filter(r => !r.students).length;
+  shell('Campus overview', 'Manage accounts, classes, and attendance in one place.', `<section class="grid">${metric('Students', active('STUDENT'), 'Active student accounts')}${metric('Faculty', active('FACULTY'), 'Active teaching accounts')}${metric('Classes', rows.length, 'Active section and subject pairs')}${metric('Accounts', users.length, 'Including inactive accounts')}</section>
+  <section class="panel"><div class="panel-head"><h2>Setup checklist</h2><button class="secondary" data-view="classes">Set up classes</button></div>
+  <p class="muted">1. Create student and faculty accounts under <b>People</b>. 2. Create a class under <b>Classes</b>. 3. Assign faculty and enroll students. Faculty can then take attendance and students see it immediately.</p>
+  ${unassigned ? `<p class="error">${unassigned} class(es) have no faculty assigned, so no one can take attendance for them.</p>` : ''}${empty ? `<p class="error">${empty} section(s) have no enrolled students.</p>` : ''}</section>`);
+}
+
+async function peopleView() {
+  const users = await api('/admin/users');
+  shell('People', 'Create accounts, reset passwords, and activate or deactivate users.', `<section class="panel"><h2>Create user account</h2><p class="muted">New users must replace the temporary password when they first sign in.</p>
+  <form id="user-form" class="form-grid"><label class="field">Full name<input name="displayName" maxlength="120" required></label><label class="field">Email<input name="email" type="email" maxlength="254" required></label>
+  <label class="field">Role<select name="role"><option>STUDENT</option><option>FACULTY</option><option>ADMIN</option></select></label><label class="field">Temporary password (12+ characters)<input name="password" type="password" minlength="12" maxlength="64" autocomplete="new-password" required></label><button class="primary">Create account</button></form></section>
+  <section class="panel"><h2>Reset a password</h2><form id="reset-form" class="form-grid"><label class="field">User<select name="id" required>${options(users, u => u.id, u => `${u.displayName} · ${u.email}`)}</select></label>
+  <label class="field">New temporary password<input name="password" type="password" minlength="12" maxlength="64" autocomplete="new-password" required></label><button class="secondary">Reset password</button></form></section>
+  <section class="panel"><div class="panel-head"><h2>Campus users</h2><span class="pill">${plural(users.length, 'account')}</span></div>
+  ${table(['Name', 'Email', 'Role', 'Status', ''], users.map(u => [esc(u.displayName), esc(u.email), esc(u.role.toLowerCase()),
+    u.active ? (u.mustChangePassword ? '<span class="pill warn">temporary password</span>' : '<span class="pill">active</span>') : '<span class="pill off">inactive</span>',
+    u.id === user.id ? '<span class="muted">You</span>' : `<button class="${u.active ? 'danger' : 'secondary'}" data-toggle="${u.id}">${u.active ? 'Deactivate' : 'Activate'}</button>`]))}</section>`);
+  const uf = $('user-form');
+  uf.onsubmit = e => { e.preventDefault(); const f = Object.fromEntries(new FormData(uf)); act(uf.querySelector('button'), () => api('/admin/users', {method: 'POST', body: f}), `Account created for ${f.email}.`); };
+  const rf = $('reset-form');
+  rf.onsubmit = e => { e.preventDefault(); const f = new FormData(rf); act(rf.querySelector('button'), () => api(`/admin/users/${f.get('id')}/password`, {method: 'POST', body: {password: f.get('password')}}), 'Password reset. The user must choose a new one at next sign-in.'); };
+  document.querySelectorAll('[data-toggle]').forEach(b => b.onclick = () => {
+    const u = users.find(x => String(x.id) === b.dataset.toggle);
+    if (u.active && !confirm(`Deactivate ${u.displayName}? They will be signed out immediately. Saved attendance is kept.`)) return;
+    act(b, () => api(`/admin/manage/users/${u.id}`, {method: 'PUT', body: {value: u.displayName, active: !u.active}}), `${u.displayName} ${u.active ? 'deactivated' : 'activated'}.`);
+  });
+}
+
+/** Suggests the academic year and semester containing today (June–May years, two semesters). */
+function academicDefaults() {
+  const now = new Date(), y = now.getMonth() >= 5 ? now.getFullYear() : now.getFullYear() - 1, first = now.getMonth() >= 5 && now.getMonth() <= 10;
+  return {yearLabel: `${y}-${y + 1}`, yearStart: `${y}-06-01`, yearEnd: `${y + 1}-05-31`, semester: first ? 'Semester 1' : 'Semester 2',
+          semesterStart: first ? `${y}-06-01` : `${y}-12-01`, semesterEnd: first ? `${y}-11-30` : `${y + 1}-05-31`};
+}
+
+async function classesView() {
+  const [rows, users] = await Promise.all([api('/admin/classes'), api('/admin/users')]);
+  const students = users.filter(u => u.role === 'STUDENT' && u.active), faculty = users.filter(u => u.role === 'FACULTY' && u.active), sections = unique(rows, 'sectionId'), d = academicDefaults();
+  const input = (name, label, value, type = 'text', max = 120) => `<label class="field">${label}<input name="${name}" type="${type}" value="${esc(value)}" ${type === 'text' ? `maxlength="${max}"` : ''} required></label>`;
+  shell('Classes & setup', 'Create the academic structure, then assign faculty and enroll students.', `<section class="panel"><h2>Create class and subject</h2><p class="muted">Existing codes are reused, and reactivated if they were deactivated. A section can have several subjects: submit again with the same section and a new subject.</p>
+  <form id="class-form" class="form-grid">${input('departmentCode', 'Department code', 'CS', 'text', 30)}${input('departmentName', 'Department name', 'Computer Science')}${input('yearLabel', 'Academic year', d.yearLabel, 'text', 30)}
+  ${input('yearStart', 'Year starts', d.yearStart, 'date')}${input('yearEnd', 'Year ends', d.yearEnd, 'date')}${input('semester', 'Semester', d.semester, 'text', 50)}
+  ${input('semesterStart', 'Semester starts', d.semesterStart, 'date')}${input('semesterEnd', 'Semester ends', d.semesterEnd, 'date')}${input('courseCode', 'Course code', 'BSC-CS', 'text', 30)}
+  ${input('courseName', 'Course name', 'B.Sc. Computer Science')}${input('sectionCode', 'Section', 'CS-2A', 'text', 30)}${input('subjectCode', 'Subject code', 'CS201', 'text', 30)}
+  ${input('subjectName', 'Subject name', 'Data Structures')}<button class="primary">Create class</button></form></section>
+  <section class="panel"><div class="panel-head"><h2>Active classes</h2><span class="pill">${plural(rows.length, 'class', 'classes')}</span></div>${table(['Course', 'Section', 'Semester', 'Subject', 'Faculty', 'Students'],
+    rows.map(r => [esc(r.courseName), esc(r.sectionCode), esc(r.semester), `${esc(r.subjectName)} <span class="muted">${esc(r.subjectCode)}</span>`, r.faculty ? esc(r.faculty) : '<span class="pill warn">none</span>', esc(r.students)]), 'No active classes. Create one above.')}</section>
+  <section class="panel"><h2>Assign faculty to a class</h2>${faculty.length && rows.length ? `<form id="assign-form" class="form-grid"><label class="field">Faculty<select name="userId" required>${options(faculty, u => u.id, u => `${u.displayName} · ${u.email}`)}</select></label>
+  <label class="field">Class<select name="classKey" required>${options(rows, r => `${r.sectionId}:${r.subjectId}`, r => `${r.sectionCode} · ${r.subjectName} (${r.semester})`)}</select></label><button class="secondary">Assign faculty</button></form>`
+  : '<p class="muted">Create at least one active faculty account and one class first.</p>'}</section>
+  <section class="panel"><h2>Enroll a student</h2>${students.length && sections.length ? `<form id="enroll-form" class="form-grid"><label class="field">Student<select name="studentId" required>${options(students, u => u.id, u => `${u.displayName} · ${u.email}`)}</select></label>
+  <label class="field">Section<select name="sectionId" required>${options(sections, r => r.sectionId, r => `${r.sectionCode} · ${r.courseName} (${r.semester})`)}</select></label><button class="secondary">Enroll student</button></form>
+  <p class="form-note">A student enrolled in a section attends every subject of that section.</p>` : '<p class="muted">Create at least one active student account and one class first.</p>'}</section>`);
+  const cf = $('class-form');
+  cf.onsubmit = e => { e.preventDefault(); const f = Object.fromEntries(new FormData(cf)); act(cf.querySelector('button'), async () => { flash = {message: (await api('/admin/academic/setup', {method: 'POST', body: f})).message, kind: 'success'}; }); };
+  const af = $('assign-form');
+  if (af) af.onsubmit = e => {
+    e.preventDefault(); const f = new FormData(af), [sectionId, subjectId] = f.get('classKey').split(':').map(Number);
+    act(af.querySelector('button'), async () => { const r = await api('/admin/assignments', {method: 'POST', body: {userId: Number(f.get('userId')), sectionId, subjectId}}); flash = {message: r.status === 'reactivated' ? 'Faculty assignment reactivated.' : 'Faculty assigned.', kind: 'success'}; });
+  };
+  const ef = $('enroll-form');
+  if (ef) ef.onsubmit = e => {
+    e.preventDefault(); const f = new FormData(ef);
+    act(ef.querySelector('button'), async () => { const r = await api('/admin/enrollments', {method: 'POST', body: {studentId: Number(f.get('studentId')), sectionId: Number(f.get('sectionId'))}}); flash = {message: r.status === 'reactivated' ? 'Enrollment reactivated.' : 'Student enrolled.', kind: 'success'}; });
+  };
+}
+
+async function manageView() {
+  const resources = {users: 'Users', departments: 'Departments', semesters: 'Semesters', courses: 'Courses', subjects: 'Subjects', sections: 'Sections', student_enrollments: 'Enrollments', faculty_assignments: 'Faculty assignments'};
+  const rows = await api('/admin/manage/' + manageEntity);
+  const links = ['student_enrollments', 'faculty_assignments'].includes(manageEntity);
+  shell('Manage records', 'Rename records and activate or deactivate them. Deactivated items disappear from faculty and student views; saved attendance is kept.', `<section class="panel">
+  <label class="field">Resource<select id="resource">${Object.entries(resources).map(([k, v]) => `<option value="${k}" ${k === manageEntity ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+  ${rows.map(r => `<form class="record" data-id="${esc(r.id)}"><div class="field"><span>${esc(r.label)}</span></div>
+  ${links ? '<div></div>' : `<label class="field">Name / code<input name="value" value="${esc(r.value)}" maxlength="120" required></label>`}
+  <label class="field">Status<select name="active"><option value="true" ${r.active ? 'selected' : ''}>Active</option><option value="false" ${!r.active ? 'selected' : ''}>Inactive</option></select></label><button class="secondary">Save</button></form>`).join('') || '<p class="muted">No records yet.</p>'}</section>`);
+  $('resource').onchange = e => { manageEntity = e.target.value; render(); };
+  document.querySelectorAll('form.record').forEach(form => form.onsubmit = e => {
+    e.preventDefault(); const f = new FormData(form), row = rows.find(r => String(r.id) === form.dataset.id);
+    act(form.querySelector('button'), async () => {
+      await api(`/admin/manage/${manageEntity}/${form.dataset.id}`, {method: 'PUT', body: {value: links ? row.value : f.get('value'), active: f.get('active') === 'true'}});
+      if (manageEntity === 'users' && row.id === user.id) user = await api('/auth/me');
+    }, 'Record saved.');
+  });
+}
+
+// ---- reports (admin and faculty) -----------------------------------------------------------
+async function reportView() {
+  const query = new URLSearchParams(Object.entries(reportFilters).filter(([, v]) => v)).toString();
+  const [classes, summary, rows] = await Promise.all([api(user.role === 'ADMIN' ? '/admin/classes' : '/faculty/classes'), api('/reports/summary?' + query), api('/reports/attendance?' + query)]);
+  const sections = unique(classes, 'sectionId');
+  shell('Attendance reports', 'Completed sessions only. Cancelled sessions are excluded, matching what students see.', `<section class="panel"><form id="filters" class="form-grid">
+  <label class="field">From<input name="from" type="date" value="${esc(reportFilters.from)}"></label><label class="field">To<input name="to" type="date" value="${esc(reportFilters.to)}"></label>
+  <label class="field">Section<select name="sectionId"><option value="">${user.role === 'ADMIN' ? 'All sections' : 'All my sections'}</option>${options(sections, c => c.sectionId, c => `${c.courseName} · ${c.sectionCode}`, reportFilters.sectionId)}</select></label>
+  <div class="actions"><button class="primary">Apply filters</button><button type="button" class="quiet" id="clear">Clear</button></div></form><button id="csv" class="secondary">Download CSV</button></section>
+  <section class="panel"><div class="panel-head"><h2>Attendance by student</h2><span class="pill">${plural(summary.length, 'row')}</span></div>${table(['Student', 'Section', 'Subject', 'Present', 'Late', 'Absent', 'Attendance'],
+    summary.map(r => [`${esc(r.studentName)}<br><span class="muted">${esc(r.email)}</span>`, esc(r.sectionCode), esc(r.subjectName), esc(r.present), esc(r.late), esc(r.absent), `<b>${esc(pct(r.percentage))}</b>`]))}</section>
+  <section class="panel"><div class="panel-head"><h2>Session records</h2><span class="pill">${rows.length >= 5000 ? 'first 5,000 rows' : plural(rows.length, 'row')}</span></div>${table(['Date', 'Session', 'Section', 'Subject', 'Student', 'Status'],
+    rows.map(r => [esc(r.sessionDate), esc(r.sessionLabel), esc(r.sectionCode), esc(r.subjectName), esc(r.studentName), esc(r.status.toLowerCase())]))}</section>`);
+  const ff = $('filters');
+  ff.onsubmit = e => {
+    e.preventDefault(); const next = Object.fromEntries(new FormData(ff));
+    if (next.from && next.to && next.from > next.to) { notice('From date must be on or before To date.', 'error'); return; }
+    reportFilters = next; render();
+  };
+  $('clear').onclick = () => { reportFilters = {from: '', to: '', sectionId: ''}; render(); };
+  $('csv').onclick = async () => {
+    try { const url = URL.createObjectURL(await api('/reports/attendance.csv?' + query)); const a = document.createElement('a'); a.href = url; a.download = 'attendance-report.csv'; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
+    catch (e) { if (!handleAuthError(e)) notice(e.message, 'error'); }
+  };
+}
+
+// ---- faculty --------------------------------------------------------------------------------
+async function faculty() {
+  if (view === 'reports') return reportView();
+  const classes = await api('/faculty/classes');
+  if (view === 'take') return takeView(classes);
+  shell('Faculty overview', 'Your assigned classes. Saved attendance appears immediately for students and in reports.', `<section class="grid">${metric('Assigned classes', classes.length, 'Active assignments')}${metric('Students', unique(classes, 'sectionId').reduce((n, c) => n + c.students, 0), 'Across your sections')}${metric('Sessions saved', classes.reduce((n, c) => n + c.completedSessions, 0), 'Completed sessions')}${metric('Today', localDate(), 'Your local date')}</section>
+  <section class="panel"><h2>Your classes</h2>${table(['Course', 'Section', 'Subject', 'Semester', 'Students', 'Sessions', ''], classes.map(c => [esc(c.courseName), esc(c.sectionCode), esc(c.subjectName), esc(c.semester), esc(c.students), esc(c.completedSessions), `<button class="primary" data-take="${c.assignmentId}">Take attendance</button>`]),
+    'No classes are assigned to you yet. Ask an administrator to assign one.')}</section>`);
+  document.querySelectorAll('[data-take]').forEach(b => b.onclick = () => { currentAssignment = Number(b.dataset.take); currentSession = null; view = 'take'; render(); });
+}
+
+async function takeView(classes) {
+  const c = classes.find(x => x.assignmentId === currentAssignment) || classes[0];
+  if (!c) { shell('Take attendance', 'Record attendance for an assigned class.', '<section class="panel muted">No classes are assigned to you yet. Ask an administrator to assign one.</section>'); return; }
+  currentAssignment = c.assignmentId;
+  const sessions = await api(`/faculty/classes/${c.assignmentId}/sessions`);
+  if (!sessions.some(s => s.id === currentSession)) currentSession = null;
+  const today = localDate(), defaultDate = today < c.semesterStart ? c.semesterStart : today > c.semesterEnd ? c.semesterEnd : today;
+  shell('Take attendance', 'Open a session for a date, mark every enrolled student, then save.', `<section class="panel"><div class="form-grid">
+  <label class="field">Class<select id="class-choice">${options(classes, x => x.assignmentId, x => `${x.sectionCode} · ${x.subjectName}`, c.assignmentId)}</select></label>
+  <label class="field">Date<input id="class-date" type="date" value="${esc(defaultDate)}" min="${esc(c.semesterStart)}" max="${esc(today < c.semesterEnd ? today : c.semesterEnd)}"></label>
+  <label class="field">Session label<input id="class-label" maxlength="80" value="Lecture ${sessions.length + 1}"></label></div>
+  <div class="actions"><button id="open-session" class="primary">Open session</button><label class="muted" for="saved-session">or continue</label><select id="saved-session" class="inline-select"><option value="">Saved sessions (${sessions.length})</option>${options(sessions, s => s.id, s => `${s.sessionDate} · ${s.sessionLabel} · ${s.state.toLowerCase()}`, currentSession)}</select></div>
+  <p class="form-note">Semester ${esc(c.semesterStart)} to ${esc(c.semesterEnd)} · ${plural(c.students, 'enrolled student')}</p><div id="roster"></div></section>`);
+  $('class-choice').onchange = e => { currentAssignment = Number(e.target.value); currentSession = null; render(); };
+  $('open-session').onclick = e => act(e.currentTarget, async () => {
+    const out = await api(`/faculty/classes/${c.assignmentId}/sessions`, {method: 'POST', body: {sessionDate: $('class-date').value, sessionLabel: $('class-label').value}});
+    currentSession = out.id;
+    flash = {message: out.status === 'existing' ? 'That session already exists; its saved marks are loaded.' : out.status === 'reopened' ? 'Cancelled session reopened. Mark every student and save.' : 'Session ready. Mark every student and save.', kind: 'success'};
+  });
+  $('saved-session').onchange = e => { currentSession = e.target.value ? Number(e.target.value) : null; render(); };
+  if (currentSession) await loadRoster(c, currentSession);
+}
+
+async function loadRoster(c, sessionId) {
+  const [roster, s] = await Promise.all([api(`/faculty/classes/${c.assignmentId}/roster`), api(`/faculty/sessions/${sessionId}`)]);
+  const saved = new Map((s.attendance || []).map(m => [String(m.studentId), m.status]));
+  const marks = Object.fromEntries(roster.map(u => [String(u.studentId), saved.get(String(u.studentId)) || 'PRESENT']));
+  const cancelled = s.state === 'CANCELLED', area = $('roster');
+  area.innerHTML = `<div class="panel-head" style="margin-top:22px"><h2>${esc(s.sessionDate)} · ${esc(s.sessionLabel)} ${statusPill(s.state)}</h2><span class="muted">${plural(roster.length, 'student')}</span></div>
+  ${cancelled ? '<p class="error">This session is cancelled and excluded from attendance totals. To take attendance again, open a session with the same date and label.</p>' : ''}
+  ${s.state === 'OPEN' ? '<p class="form-note">Not saved yet. Everyone starts as Present; change anyone who is absent or late.</p>' : ''}
+  ${roster.length ? `<div role="list">${roster.map(u => `<div class="row" role="listitem"><div class="person"><b>${esc(u.displayName)}</b><small>${esc(u.email)}</small></div><div class="marks" role="group" aria-label="Attendance for ${esc(u.displayName)}">${['PRESENT', 'ABSENT', 'LATE'].map(x =>
+    `<button type="button" class="mark ${x.toLowerCase()} ${marks[u.studentId] === x ? 'on' : ''}" aria-pressed="${marks[u.studentId] === x}" data-user="${u.studentId}" data-mark="${x}" ${cancelled ? 'disabled' : ''}>${x[0] + x.slice(1).toLowerCase()}</button>`).join('')}</div></div>`).join('')}</div>`
+    : '<p class="muted">No students are enrolled in this section yet. Ask an administrator to enroll students.</p>'}
+  <div class="panel-head" style="margin-top:16px"><div class="actions"><button type="button" id="all-present" class="secondary" ${cancelled || !roster.length ? 'disabled' : ''}>Mark all present</button>${!cancelled ? '<button type="button" id="cancel-session" class="danger">Cancel session</button>' : ''}</div>
+  <button type="button" id="save-attendance" class="primary" ${cancelled || !roster.length ? 'disabled' : ''}>Save attendance</button></div>`;
+  const paint = () => area.querySelectorAll('[data-user]').forEach(b => { const on = marks[b.dataset.user] === b.dataset.mark; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); });
+  area.querySelectorAll('[data-user]').forEach(b => b.onclick = () => { marks[b.dataset.user] = b.dataset.mark; paint(); });
+  const all = $('all-present'); if (all) all.onclick = () => { Object.keys(marks).forEach(k => marks[k] = 'PRESENT'); paint(); };
+  const cancel = $('cancel-session');
+  if (cancel) cancel.onclick = () => { if (confirm('Cancel this session? It will be removed from every attendance total.')) act(cancel, () => api(`/faculty/sessions/${sessionId}/cancel`, {method: 'POST'}), 'Session cancelled.'); };
+  $('save-attendance').onclick = e => act(e.currentTarget, () => api(`/faculty/sessions/${sessionId}/attendance`, {method: 'PUT', body: {expectedVersion: s.version, records: roster.map(u => ({studentId: u.studentId, status: marks[u.studentId]}))}}), `Attendance saved for ${plural(roster.length, 'student')}.`);
+}
+
+// ---- student --------------------------------------------------------------------------------
+async function student() {
+  if (view === 'history') {
+    const size = 25, h = await api(`/student/attendance/history?page=${historyPage}&size=${size}`), pages = Math.max(1, Math.ceil(h.totalElements / size));
+    if (historyPage >= pages) { historyPage = pages - 1; return student(); }
+    shell('Attendance history', 'Every completed class session you were marked in.', `<section class="panel">${table(['Date', 'Session', 'Subject', 'Code', 'Status'], h.content.map(r => [esc(r.sessionDate), esc(r.sessionLabel), esc(r.subjectName), esc(r.subjectCode), esc(r.status.toLowerCase())]), 'No completed sessions yet.')}
+    <div class="panel-head" style="margin-top:12px"><span class="muted">Page ${historyPage + 1} of ${pages} · ${plural(h.totalElements, 'record')}</span><div class="actions"><button class="secondary" id="prev" ${historyPage === 0 ? 'disabled' : ''}>← Newer</button><button class="secondary" id="next" ${historyPage + 1 >= pages ? 'disabled' : ''}>Older →</button></div></div></section>`);
+    $('prev').onclick = () => { historyPage--; render(); };
+    $('next').onclick = () => { historyPage++; render(); };
+    return;
+  }
+  const [s, classes] = await Promise.all([api('/student/attendance/summary'), api('/student/classes')]);
+  shell('Your attendance', 'Only your own attendance is shown here. It updates as soon as faculty save a session.', `<section class="grid">${metric('Overall attendance', pct(s.percentage), `Across ${plural(s.total, 'completed session')}`)}${metric('Present', s.present, 'Marked present')}${metric('Late', s.late, 'Counts as attended')}${metric('Absent', s.absent, 'Marked absent')}</section>
+  <p class="muted">${esc(s.formula)}</p>
+  <section class="panel"><h2>By subject</h2><div class="subjects">${s.subjects.length ? s.subjects.map(x => `<article class="subject"><b>${esc(x.subjectName)}</b><p class="muted">${esc(x.subjectCode)} · ${esc(x.attended)}/${esc(x.total)} attended</p><div class="bar" role="img" aria-label="${esc(pct(x.percentage))} attended"><i style="width:${Math.min(100, Number(x.percentage) || 0)}%"></i></div><small>${esc(pct(x.percentage))}</small></article>`).join('') : '<p class="muted">No completed sessions yet.</p>'}</div></section>
+  <section class="panel"><h2>Your classes</h2>${table(['Course', 'Section', 'Subject', 'Semester', 'Faculty'], classes.map(c => [esc(c.courseName), esc(c.sectionCode), `${esc(c.subjectName)} <span class="muted">${esc(c.subjectCode)}</span>`, esc(c.semester), c.faculty ? esc(c.faculty) : '<span class="muted">Not assigned yet</span>']), 'You are not enrolled in any active class yet.')}
+  <button class="secondary" data-view="history" style="margin-top:12px">View attendance history</button></section>`);
+}
+
+// ---- start ----------------------------------------------------------------------------------
+api('/auth/me').then(me => { user = me; render(); }).catch(() => login());
 })();
-</script></body></html>
+</script>
+</body>
+</html>

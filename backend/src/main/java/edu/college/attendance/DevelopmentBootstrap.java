@@ -50,23 +50,29 @@ public class DevelopmentBootstrap {
         Integer exists = db.queryForObject("SELECT COUNT(*) FROM departments", Integer.class);
         if (exists != null && exists > 0) return; // only seed classes into an empty database
 
+        // Same calendar the admin "Create class" form suggests: June–May academic years with
+        // Semester 1 = June–November and Semester 2 = December–May. Seed the semester containing today.
         LocalDate today = LocalDate.now();
-        LocalDate semesterStart = today.minusMonths(2).withDayOfMonth(1), semesterEnd = today.plusMonths(4);
-        LocalDate yearStart = semesterStart, yearEnd = semesterStart.plusYears(1).minusDays(1);
-        String yearLabel = yearStart.getYear() + "-" + yearEnd.getYear();
+        int startYear = today.getMonthValue() >= 6 ? today.getYear() : today.getYear() - 1;
+        boolean first = today.getMonthValue() >= 6 && today.getMonthValue() <= 11;
+        LocalDate yearStart = LocalDate.of(startYear, 6, 1), yearEnd = LocalDate.of(startYear + 1, 5, 31);
+        LocalDate semesterStart = first ? yearStart : LocalDate.of(startYear, 12, 1), semesterEnd = first ? LocalDate.of(startYear, 11, 30) : yearEnd;
+        String yearLabel = startYear + "-" + (startYear + 1), semesterLabel = first ? "Semester 1" : "Semester 2";
 
         db.update("INSERT INTO departments(code,name) VALUES('CS','Computer Science')");
         db.update("INSERT INTO academic_years(label,start_date,end_date) VALUES(?,?,?)", yearLabel, yearStart, yearEnd);
-        db.update("INSERT INTO semesters(academic_year_id,label,start_date,end_date) SELECT id,'Semester 1',?,? FROM academic_years WHERE label=?", semesterStart, semesterEnd, yearLabel);
+        db.update("INSERT INTO semesters(academic_year_id,label,start_date,end_date) SELECT id,?,?,? FROM academic_years WHERE label=?", semesterLabel, semesterStart, semesterEnd, yearLabel);
         db.update("INSERT INTO courses(department_id,code,name) SELECT id,'BSC-CS','B.Sc. Computer Science' FROM departments WHERE code='CS'");
-        db.update("INSERT INTO sections(course_id,semester_id,code) SELECT c.id,se.id,'CS-2A' FROM courses c CROSS JOIN semesters se WHERE c.code='BSC-CS' AND se.label='Semester 1'");
+        db.update("INSERT INTO sections(course_id,semester_id,code) SELECT c.id,se.id,'CS-2A' FROM courses c CROSS JOIN semesters se WHERE c.code='BSC-CS' AND se.label=?", semesterLabel);
         db.update("INSERT INTO subjects(course_id,code,name) SELECT id,'CS201','Data Structures' FROM courses WHERE code='BSC-CS'");
         db.update("INSERT INTO faculty_assignments(faculty_user_id,section_id,subject_id) SELECT f.id,s.id,sub.id FROM users f CROSS JOIN sections s CROSS JOIN subjects sub WHERE f.email='faculty@college.test' AND s.code='CS-2A' AND sub.code='CS201'");
         db.update("INSERT INTO student_enrollments(student_user_id,section_id) SELECT u.id,s.id FROM users u CROSS JOIN sections s WHERE u.email='student@college.test' AND s.code='CS-2A'");
-        sampleSession(db, today.minusDays(2), "Lecture 1", "PRESENT");
-        sampleSession(db, today.minusDays(1), "Lecture 2", "LATE");
+        sampleSession(db, latest(today.minusDays(2), semesterStart), "Lecture 1", "PRESENT");
+        sampleSession(db, latest(today.minusDays(1), semesterStart), "Lecture 2", "LATE");
         log.info("Seeded demo class CS-2A / CS201 for semester {} to {}", semesterStart, semesterEnd);
     }
+
+    private static LocalDate latest(LocalDate a, LocalDate b) { return a.isAfter(b) ? a : b; }
 
     private void sampleSession(JdbcTemplate db, LocalDate date, String label, String status) {
         db.update("INSERT INTO class_sessions(section_id,subject_id,session_date,session_label,state,version,created_by) SELECT s.id,sub.id,?,?,'COMPLETED',1,f.id" +
