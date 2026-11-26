@@ -12,6 +12,7 @@ import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -77,23 +78,29 @@ public class FacultyController {
         if (date.isAfter(LocalDate.now().plusDays(1)))
             throw new IllegalArgumentException("Attendance cannot be taken for a future date.");
 
-        List<Map<String, Object>> found = db.queryForList("SELECT id,state FROM class_sessions WHERE section_id=? AND subject_id=? AND session_date=? AND session_label=? FOR UPDATE",
-            a.sectionId(), a.subjectId(), date, label);
-        if (!found.isEmpty()) {
-            long id = ((Number) found.getFirst().get("id")).longValue();
-            if ("CANCELLED".equals(found.getFirst().get("state"))) {
-                db.update("UPDATE class_sessions SET state='OPEN',version=version+1 WHERE id=?", id);
-                app.audit(auth, "SESSION_REOPENED", "CLASS_SESSION", id);
-                return Map.of("id", id, "status", "reopened");
+        // No locking read before the insert: a FOR UPDATE on a row that does not exist yet takes a gap
+        // lock, and two faculty opening the same session at once would deadlock. The unique key decides instead.
+        String find = "SELECT id,state FROM class_sessions WHERE section_id=? AND subject_id=? AND session_date=? AND session_label=?";
+        List<Map<String, Object>> found = db.queryForList(find, a.sectionId(), a.subjectId(), date, label);
+        if (found.isEmpty()) {
+            try {
+                db.update("INSERT INTO class_sessions(section_id,subject_id,session_date,session_label,created_by) VALUES(?,?,?,?,?)",
+                    a.sectionId(), a.subjectId(), date, label, uid);
+                Long id = db.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+                app.audit(auth, "SESSION_OPENED", "CLASS_SESSION", id);
+                return Map.of("id", id, "status", "created");
+            } catch (DuplicateKeyException raced) {
+                // Another faculty member created it a moment ago; a locking read sees their committed row.
+                found = db.queryForList(find + " LOCK IN SHARE MODE", a.sectionId(), a.subjectId(), date, label);
             }
-            return Map.of("id", id, "status", "existing");
         }
-        db.update("INSERT INTO class_sessions(section_id,subject_id,session_date,session_label,created_by) VALUES(?,?,?,?,?)",
-            a.sectionId(), a.subjectId(), date, label, uid);
-        Long id = db.queryForObject("SELECT id FROM class_sessions WHERE section_id=? AND subject_id=? AND session_date=? AND session_label=?",
-            Long.class, a.sectionId(), a.subjectId(), date, label);
-        app.audit(auth, "SESSION_OPENED", "CLASS_SESSION", id);
-        return Map.of("id", id, "status", "created");
+        long id = ((Number) found.getFirst().get("id")).longValue();
+        if ("CANCELLED".equals(found.getFirst().get("state"))
+            && db.update("UPDATE class_sessions SET state='OPEN',version=version+1 WHERE id=? AND state='CANCELLED'", id) == 1) {
+            app.audit(auth, "SESSION_REOPENED", "CLASS_SESSION", id);
+            return Map.of("id", id, "status", "reopened");
+        }
+        return Map.of("id", id, "status", "existing");
     }
 
     @GetMapping("/sessions/{sessionId}")

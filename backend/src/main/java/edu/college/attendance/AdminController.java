@@ -67,7 +67,7 @@ public class AdminController {
 
     @PostMapping("/users/{id}/deactivate") @Transactional
     Map<String, Object> deactivate(@PathVariable long id, Authentication auth) {
-        setUserActive(db, id, false);
+        setUserActive(db, app.userId(auth), id, false);
         app.audit(auth, "USER_DEACTIVATED", "USER", id);
         return Map.of("id", id, "active", false);
     }
@@ -81,11 +81,12 @@ public class AdminController {
     }
 
     /**
-     * Activates or deactivates a user. The admin rows are locked so two concurrent requests
-     * cannot both disable "another" admin and leave the college with none.
+     * Activates or deactivates a user. Admins cannot deactivate themselves, and the admin rows are
+     * locked so two concurrent requests cannot both disable "another" admin and leave the college with none.
      */
-    static void setUserActive(JdbcTemplate db, long id, boolean active) {
+    static void setUserActive(JdbcTemplate db, long actorId, long id, boolean active) {
         if (!active) {
+            if (id == actorId) throw new IllegalArgumentException("You cannot deactivate your own account. Ask another administrator.");
             List<Long> admins = db.query("SELECT id FROM users WHERE role='ADMIN' AND active=TRUE FOR UPDATE", (rs, n) -> rs.getLong(1));
             if (admins.contains(id) && admins.size() <= 1) throw new IllegalArgumentException("The last active administrator cannot be deactivated.");
         }
@@ -125,6 +126,8 @@ public class AdminController {
         Map<String, Object> yearDates = db.queryForMap("SELECT start_date,end_date FROM academic_years WHERE id=?", year);
         LocalDate yearStart = ((java.sql.Date) yearDates.get("start_date")).toLocalDate();
         LocalDate yearEnd = ((java.sql.Date) yearDates.get("end_date")).toLocalDate();
+        if (!yearStart.equals(a.yearStart()) || !yearEnd.equals(a.yearEnd()))
+            throw new IllegalArgumentException("Academic year " + yearLabel + " already exists with dates " + yearStart + " to " + yearEnd + ". Use those dates or a different year label.");
         if (a.semesterStart().isBefore(yearStart) || a.semesterEnd().isAfter(yearEnd))
             throw new IllegalArgumentException("Semester dates must fall within academic year " + yearLabel + " (" + yearStart + " to " + yearEnd + ").");
 
@@ -132,6 +135,11 @@ public class AdminController {
         long semester = ensure("SELECT id FROM semesters WHERE academic_year_id=? AND label=?", "semesters",
             () -> db.update("INSERT INTO semesters(academic_year_id,label,start_date,end_date) VALUES(?,?,?,?)", year, semesterLabel, a.semesterStart(), a.semesterEnd()),
             year, semesterLabel);
+        Map<String, Object> semesterDates = db.queryForMap("SELECT start_date,end_date FROM semesters WHERE id=?", semester);
+        LocalDate semesterStart = ((java.sql.Date) semesterDates.get("start_date")).toLocalDate();
+        LocalDate semesterEnd = ((java.sql.Date) semesterDates.get("end_date")).toLocalDate();
+        if (!semesterStart.equals(a.semesterStart()) || !semesterEnd.equals(a.semesterEnd()))
+            throw new IllegalArgumentException(semesterLabel + " of " + yearLabel + " already exists with dates " + semesterStart + " to " + semesterEnd + ". Use those dates or a different semester name.");
 
         String courseCode = a.courseCode().trim().toUpperCase();
         long course = ensure("SELECT id FROM courses WHERE department_id=? AND code=?", "courses",
@@ -160,18 +168,13 @@ public class AdminController {
     Map<String, Object> enroll(@Valid @RequestBody Enrollment e, Authentication auth) {
         requireRole(e.studentId(), "STUDENT");
         requireLiveSection(e.sectionId());
-        List<String> existing = db.query("SELECT status FROM student_enrollments WHERE student_user_id=? AND section_id=? FOR UPDATE",
+        // A single upsert is atomic; a locking read on a missing row would let two admins deadlock.
+        List<String> before = db.query("SELECT status FROM student_enrollments WHERE student_user_id=? AND section_id=?",
             (rs, n) -> rs.getString(1), e.studentId(), e.sectionId());
-        String result;
-        if (existing.isEmpty()) {
-            db.update("INSERT INTO student_enrollments(student_user_id,section_id) VALUES(?,?)", e.studentId(), e.sectionId());
-            result = "enrolled";
-        } else if ("ACTIVE".equals(existing.getFirst())) {
+        if (!before.isEmpty() && "ACTIVE".equals(before.getFirst()))
             throw new ResponseStatusException(HttpStatus.CONFLICT, "This student is already enrolled in that section.");
-        } else {
-            db.update("UPDATE student_enrollments SET status='ACTIVE' WHERE student_user_id=? AND section_id=?", e.studentId(), e.sectionId());
-            result = "reactivated";
-        }
+        db.update("INSERT INTO student_enrollments(student_user_id,section_id) VALUES(?,?) ON DUPLICATE KEY UPDATE status='ACTIVE'", e.studentId(), e.sectionId());
+        String result = before.isEmpty() ? "enrolled" : "reactivated";
         app.audit(auth, "STUDENT_ENROLLED", "SECTION", e.sectionId());
         return Map.of("studentId", e.studentId(), "sectionId", e.sectionId(), "status", result);
     }
@@ -182,18 +185,13 @@ public class AdminController {
         Integer live = db.queryForObject("SELECT COUNT(*) FROM sections s JOIN subjects sub ON sub.id=?" + LIVE_CLASS_JOINS + " WHERE s.id=? AND" + LIVE_CLASS_FILTER,
             Integer.class, l.subjectId(), l.sectionId());
         if (live == null || live == 0) throw new IllegalArgumentException("Choose an active class: the subject must belong to the section's course.");
-        List<Boolean> existing = db.query("SELECT active FROM faculty_assignments WHERE faculty_user_id=? AND section_id=? AND subject_id=? FOR UPDATE",
+        List<Boolean> before = db.query("SELECT active FROM faculty_assignments WHERE faculty_user_id=? AND section_id=? AND subject_id=?",
             (rs, n) -> rs.getBoolean(1), l.userId(), l.sectionId(), l.subjectId());
-        String result;
-        if (existing.isEmpty()) {
-            db.update("INSERT INTO faculty_assignments(faculty_user_id,section_id,subject_id) VALUES(?,?,?)", l.userId(), l.sectionId(), l.subjectId());
-            result = "assigned";
-        } else if (existing.getFirst()) {
+        if (!before.isEmpty() && before.getFirst())
             throw new ResponseStatusException(HttpStatus.CONFLICT, "This faculty member is already assigned to that class.");
-        } else {
-            db.update("UPDATE faculty_assignments SET active=TRUE WHERE faculty_user_id=? AND section_id=? AND subject_id=?", l.userId(), l.sectionId(), l.subjectId());
-            result = "reactivated";
-        }
+        db.update("INSERT INTO faculty_assignments(faculty_user_id,section_id,subject_id) VALUES(?,?,?) ON DUPLICATE KEY UPDATE active=TRUE",
+            l.userId(), l.sectionId(), l.subjectId());
+        String result = before.isEmpty() ? "assigned" : "reactivated";
         app.audit(auth, "FACULTY_ASSIGNED", "SECTION", l.sectionId());
         return Map.of("facultyId", l.userId(), "sectionId", l.sectionId(), "subjectId", l.subjectId(), "status", result);
     }

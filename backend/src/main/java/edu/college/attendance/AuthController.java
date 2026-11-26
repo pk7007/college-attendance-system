@@ -44,17 +44,18 @@ public class AuthController {
     @PostMapping("/login")
     Map<String, Object> login(@Valid @RequestBody Login input, HttpServletRequest request, HttpServletResponse response) {
         String email = input.email().trim().toLowerCase();
-        if (throttle.isBlocked(email))
+        String throttleKey = LoginThrottle.key(email, request.getRemoteAddr());
+        if (throttle.isBlocked(throttleKey))
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Too many failed sign-in attempts. Wait 15 minutes or ask an administrator to reset your password.");
         var users = db.query("SELECT id,email,password_hash,display_name,role,active,must_change_password FROM users WHERE email=?",
             (rs, n) -> new User(rs.getLong("id"), rs.getString("email"), rs.getString("password_hash"), rs.getString("display_name"),
                 rs.getString("role"), rs.getBoolean("active"), rs.getBoolean("must_change_password")), email);
         boolean matches = passwords.matches(input.password(), users.isEmpty() ? dummyHash : users.getFirst().passwordHash());
         if (users.isEmpty() || !matches || !users.getFirst().active()) {
-            throttle.recordFailure(email);
+            throttle.recordFailure(throttleKey);
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Email or password is incorrect, or the account is disabled.");
         }
-        throttle.recordSuccess(email);
+        throttle.recordSuccess(throttleKey);
         User user = users.getFirst();
         var auth = UsernamePasswordAuthenticationToken.authenticated(user.email(), null, List.of(new SimpleGrantedAuthority("ROLE_" + user.role())));
         request.getSession(true);

@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -56,6 +57,13 @@ public class ApiErrors {
     ResponseEntity<Map<String, String>> integrity(DataIntegrityViolationException e) {
         log.warn("Rejected write: {}", e.getMostSpecificCause().getMessage());
         return error(HttpStatus.BAD_REQUEST, "The record refers to missing data or a value is too long.");
+    }
+
+    /** Deadlocks and lock-wait timeouts are transient: the database rolled back cleanly, so the user can just retry. */
+    @ExceptionHandler(PessimisticLockingFailureException.class)
+    ResponseEntity<Map<String, String>> busy(PessimisticLockingFailureException e) {
+        log.warn("Lock conflict, asked the user to retry: {}", e.getMostSpecificCause().getMessage());
+        return error(HttpStatus.CONFLICT, "Someone else is changing this record right now. Please try again.");
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

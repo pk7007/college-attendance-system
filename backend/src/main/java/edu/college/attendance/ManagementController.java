@@ -66,7 +66,7 @@ public class ManagementController {
                 String value = input.value() == null ? "" : input.value().trim();
                 if (value.isEmpty() || value.length() > r.maxLength()) throw new IllegalArgumentException("Enter a name or code of 1 to " + r.maxLength() + " characters.");
                 if (entity.equals("sections")) value = value.toUpperCase();
-                if (entity.equals("users")) AdminController.setUserActive(db, id, input.active());
+                if (entity.equals("users")) AdminController.setUserActive(db, app.userId(auth), id, input.active());
                 changed = db.update("UPDATE " + r.table() + " SET " + r.field() + "=?,active=? WHERE id=?", value, input.active(), id);
             }
         }

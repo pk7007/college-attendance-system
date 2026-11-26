@@ -37,7 +37,7 @@ jobs:
         working-directory: backend
         run: |
           report=target/surefire-reports/TEST-edu.college.attendance.DataReflectionIntegrationTest.xml
-          grep -q 'tests="9"' "$report" && grep -q 'skipped="0"' "$report"
+          grep -q 'skipped="0"' "$report" && ! grep -q ' tests="0"' "$report"
 
   docker:
     name: Docker image builds

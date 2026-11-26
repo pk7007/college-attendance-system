@@ -37,8 +37,11 @@ public class ReportsController {
         if (sectionId != null) { where.append(" AND cs.section_id=?"); args.add(sectionId); }
         if (subjectId != null) { where.append(" AND cs.subject_id=?"); args.add(subjectId); }
         if (auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_FACULTY"))) {
+            // Faculty see exactly the classes on their class list: an active assignment to a live class.
+            // Admins see everything, including history of classes that were later deactivated.
             where.append(" AND EXISTS(SELECT 1 FROM faculty_assignments fa JOIN users f ON f.id=fa.faculty_user_id" +
-                " WHERE f.email=? AND fa.section_id=cs.section_id AND fa.subject_id=cs.subject_id AND fa.active=TRUE)");
+                " JOIN sections s ON s.id=fa.section_id JOIN subjects sub ON sub.id=fa.subject_id" + AppSupport.LIVE_CLASS_JOINS +
+                " WHERE f.email=? AND fa.section_id=cs.section_id AND fa.subject_id=cs.subject_id AND fa.active=TRUE AND" + AppSupport.LIVE_CLASS_FILTER + ")");
             args.add(auth.getName());
         }
         return new Filter(where.toString(), args);

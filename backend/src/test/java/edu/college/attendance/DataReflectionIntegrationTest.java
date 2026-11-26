@@ -132,6 +132,9 @@ class DataReflectionIntegrationTest {
             assertThat(ids(f.faculty.get("/api/faculty/classes"), "sectionId")).as(part.getKey() + " hidden from faculty").doesNotContain(f.sectionId);
             assertThat(ids(s1.get("/api/student/classes"), "sectionId")).as(part.getKey() + " hidden from student").doesNotContain(f.sectionId);
             f.faculty.post("/api/faculty/classes/" + f.assignmentId + "/sessions", Map.of("sessionDate", today.toString(), "sessionLabel", "Blocked"), 403);
+            // Faculty reports follow the faculty class list; admins keep the full history.
+            assertThat(f.faculty.get("/api/reports/attendance")).as(part.getKey() + " hidden from faculty reports").isEmpty();
+            assertThat(admin.get("/api/reports/attendance?sectionId=" + f.sectionId)).hasSize(2);
             // Saved attendance is history and stays visible to the student.
             assertThat(s1.get("/api/student/attendance/summary").get("total").asInt()).isEqualTo(1);
 
@@ -144,6 +147,43 @@ class DataReflectionIntegrationTest {
         JsonNode again = admin.post("/api/admin/academic/setup", f.setup, 200);
         assertThat(again.get("subjectId").asLong()).isEqualTo(f.subjectId);
         assertThat(ids(f.faculty.get("/api/faculty/classes"), "sectionId")).contains(f.sectionId);
+
+        // Re-submitting an existing semester with different dates is refused instead of silently ignored.
+        Map<String, Object> moved = new java.util.HashMap<>(f.setup);
+        moved.put("semesterEnd", today.plusMonths(3).toString());
+        assertThat(admin.post("/api/admin/academic/setup", moved, 400).get("error").asText()).contains("already exists with dates");
+        moved = new java.util.HashMap<>(f.setup);
+        moved.put("yearEnd", today.plusMonths(7).toString());
+        assertThat(admin.post("/api/admin/academic/setup", moved, 400).get("error").asText()).contains("already exists with dates");
+    }
+
+    @Test
+    void simultaneousRequestsNeverFailWithServerErrors() throws Exception {
+        Fixture f = newClass();
+        Actor other = newUser("FACULTY");
+        admin.post("/api/admin/assignments", Map.of("userId", other.id, "sectionId", f.sectionId, "subjectId", f.subjectId), 200);
+        long otherAssignment = find(other.get("/api/faculty/classes"), "sectionId", f.sectionId).get("assignmentId").asLong();
+        Actor second = login(ADMIN_EMAIL, ADMIN_PASSWORD);
+        Actor student = newUser("STUDENT");
+
+        for (int round = 0; round < 5; round++) {
+            Map<String, String> session = Map.of("sessionDate", today.toString(), "sessionLabel", "Race " + round);
+            List<MockHttpServletResponse> opened = race(
+                () -> f.faculty.raw(post("/api/faculty/classes/" + f.assignmentId + "/sessions", session), -1),
+                () -> other.raw(post("/api/faculty/classes/" + otherAssignment + "/sessions", session), -1));
+            assertThat(opened).allSatisfy(r -> assertThat(r.getStatus()).as(r.getContentAsString()).isEqualTo(200));
+            assertThat(json.readTree(opened.get(0).getContentAsString()).get("id")).isEqualTo(json.readTree(opened.get(1).getContentAsString()).get("id"));
+        }
+        assertThat(f.faculty.get("/api/faculty/classes/" + f.assignmentId + "/sessions")).hasSize(5);
+
+        // Two admins enrolling the same student at once: one succeeds, neither gets a 500.
+        Map<String, Long> enrollment = Map.of("studentId", student.id, "sectionId", f.sectionId);
+        List<MockHttpServletResponse> enrolled = race(
+            () -> admin.raw(post("/api/admin/enrollments", enrollment), -1),
+            () -> second.raw(post("/api/admin/enrollments", enrollment), -1));
+        assertThat(enrolled).allSatisfy(r -> assertThat(r.getStatus()).as(r.getContentAsString()).isIn(200, 409));
+        assertThat(enrolled).anySatisfy(r -> assertThat(r.getStatus()).isEqualTo(200));
+        assertThat(f.faculty.get("/api/faculty/classes/" + f.assignmentId + "/roster")).hasSize(3);
     }
 
     @Test
@@ -277,9 +317,9 @@ class DataReflectionIntegrationTest {
         reset.post("/api/auth/password", Map.of("currentPassword", "Reset-By-Admin-123!", "newPassword", PASSWORD), 200);
         reset.get("/api/student/attendance/summary", 200);
 
-        // The last administrator can never be disabled.
+        // Admins cannot lock themselves out, and the college always keeps an administrator.
         long adminId = admin.get("/api/auth/me").get("id").asLong();
-        admin.put("/api/admin/manage/users/" + adminId, Map.of("value", "Campus Administrator", "active", false), 400);
+        assertThat(admin.put("/api/admin/manage/users/" + adminId, Map.of("value", "Campus Administrator", "active", false), 400).get("error").asText()).contains("your own account");
         admin.post("/api/admin/users/" + adminId + "/deactivate", Map.of(), 400);
         admin.get("/api/admin/users", 200);
     }
@@ -393,6 +433,26 @@ class DataReflectionIntegrationTest {
         return StreamSupport.stream(array.spliterator(), false).map(n -> n.get(field).asLong()).toList();
     }
 
+    /** JSON POST with a CSRF token, for use with Actor.raw. */
+    private MockHttpServletRequestBuilder post(String path, Object body) throws Exception {
+        return MockMvcRequestBuilders.post(path).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(body)).with(csrf());
+    }
+
+    /** Starts every request at the same instant on its own thread and returns the responses in order. */
+    @SafeVarargs
+    private static List<MockHttpServletResponse> race(java.util.concurrent.Callable<MockHttpServletResponse>... requests) throws Exception {
+        var pool = java.util.concurrent.Executors.newFixedThreadPool(requests.length);
+        try {
+            var start = new java.util.concurrent.CountDownLatch(1);
+            List<java.util.concurrent.Future<MockHttpServletResponse>> futures = new ArrayList<>();
+            for (var request : requests) futures.add(pool.submit(() -> { start.await(); return request.call(); }));
+            start.countDown();
+            List<MockHttpServletResponse> responses = new ArrayList<>();
+            for (var future : futures) responses.add(future.get(30, java.util.concurrent.TimeUnit.SECONDS));
+            return responses;
+        } finally { pool.shutdownNow(); }
+    }
+
     /** The API omits null fields (spring.jackson.default-property-inclusion=non_null). */
     private static boolean absent(JsonNode node, String field) { return node.path(field).isMissingNode() || node.path(field).isNull(); }
 
@@ -413,9 +473,10 @@ class DataReflectionIntegrationTest {
             return body(raw(MockMvcRequestBuilders.put(path).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(body)).with(csrf()), status));
         }
 
+        /** Performs the request in this user's session; status -1 skips the status check. */
         MockHttpServletResponse raw(MockHttpServletRequestBuilder request, int status) throws Exception {
             MockHttpServletResponse r = mvc.perform(request.session(session)).andReturn().getResponse();
-            assertThat(r.getStatus()).as(r.getContentAsString()).isEqualTo(status);
+            if (status >= 0) assertThat(r.getStatus()).as(r.getContentAsString()).isEqualTo(status);
             return r;
         }
 
