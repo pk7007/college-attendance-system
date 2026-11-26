@@ -28,9 +28,9 @@ Attendance history is never filtered by it. Saved records stay in student summar
 - Passwords are BCrypt hashes. Sessions use HttpOnly cookies, and every write needs a CSRF token.
 - Controllers check the role with `@PreAuthorize`. Faculty routes also check the assignment, and student routes take the student's identity only from the session.
 - A filter re-reads the account on every request. A deactivated user is signed out immediately, and a user with a temporary password can only change it.
-- After repeated wrong passwords, login for that email is throttled for 15 minutes (`LoginThrottle`).
+- After repeated wrong passwords for an email from the same address, further attempts from that address are refused for 15 minutes (`LoginThrottle`). An admin password reset lifts the block.
 - Every error is returned as `{"error": "..."}`. Unexpected failures are logged and never expose stack traces.
 
 ## Startup data
 
-`DevelopmentBootstrap` creates the first administrator from `CAM_BOOTSTRAP_ADMIN_*` in any profile, unless that account already exists. The `dev` profile also seeds a demo faculty member, a demo student and a class in the semester containing today. It uses the same June–May calendar the admin form suggests, so a fresh install always works.
+`DevelopmentBootstrap` creates the first administrator from `CAM_BOOTSTRAP_ADMIN_*` in any profile, unless that account already exists. The `dev` profile also seeds a demo section in the semester containing today: 2 faculty, 12 students, 3 subjects and about a month of attendance generated with a fixed random seed, so it is the same every time. It uses the same June–May calendar the admin form suggests, so a fresh install always works.

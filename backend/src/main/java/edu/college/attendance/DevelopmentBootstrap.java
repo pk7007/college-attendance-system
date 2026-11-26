@@ -1,6 +1,7 @@
 package edu.college.attendance;
 
 import java.time.LocalDate;
+import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -48,9 +49,30 @@ public class DevelopmentBootstrap {
         });
     }
 
+    // ---- demo data: one section, 3 subjects, 2 faculty, 12 students, the last month of classes ----------
+
+    /** Demo faculty: email, name. All use CAM_DEMO_FACULTY_PASSWORD. */
+    private static final String[][] DEMO_FACULTY = {{"faculty@college.test", "Jordan Lee"}, {"faculty2@college.test", "Anita Rao"}};
+    /**
+     * Demo students: email, name, typical attendance rate. A few sit below the common 75% threshold
+     * so reports show realistic variety. All use CAM_DEMO_STUDENT_PASSWORD.
+     */
+    private static final Object[][] DEMO_STUDENTS = {
+        {"student@college.test", "Sam Patel", 0.94}, {"student2@college.test", "Aisha Khan", 0.97}, {"student3@college.test", "Ravi Kumar", 0.82},
+        {"student4@college.test", "Meera Iyer", 0.99}, {"student5@college.test", "Arjun Nair", 0.68}, {"student6@college.test", "Fatima Sheikh", 0.90},
+        {"student7@college.test", "Daniel Thomas", 0.86}, {"student8@college.test", "Kavya Reddy", 0.62}, {"student9@college.test", "Rohan Das", 0.91},
+        {"student10@college.test", "Neha Joshi", 0.95}, {"student11@college.test", "Vikram Singh", 0.74}, {"student12@college.test", "Ananya Gupta", 0.88}};
+    /** Demo subjects: code, name, teacher (index into DEMO_FACULTY), weekdays it meets. */
+    private record DemoSubject(String code, String name, int teacher, java.util.Set<java.time.DayOfWeek> days) {}
+    private static final List<DemoSubject> DEMO_SUBJECTS = List.of(
+        new DemoSubject("CS201", "Data Structures", 0, java.util.EnumSet.of(java.time.DayOfWeek.MONDAY, java.time.DayOfWeek.WEDNESDAY, java.time.DayOfWeek.FRIDAY)),
+        new DemoSubject("CS202", "Database Systems", 0, java.util.EnumSet.of(java.time.DayOfWeek.TUESDAY, java.time.DayOfWeek.THURSDAY)),
+        new DemoSubject("CS203", "Operating Systems", 1, java.util.EnumSet.of(java.time.DayOfWeek.MONDAY, java.time.DayOfWeek.THURSDAY)));
+
     private void seedDemo(JdbcTemplate db, PasswordEncoder encoder, String facultyPassword, String studentPassword) {
-        addUser(db, encoder, "faculty@college.test", "Jordan Lee", "FACULTY", facultyPassword, false);
-        addUser(db, encoder, "student@college.test", "Sam Patel", "STUDENT", studentPassword, false);
+        String facultyHash = encoder.encode(facultyPassword), studentHash = encoder.encode(studentPassword);
+        for (String[] f : DEMO_FACULTY) addUserWithHash(db, f[0], f[1], "FACULTY", facultyHash);
+        for (Object[] s : DEMO_STUDENTS) addUserWithHash(db, (String) s[0], (String) s[1], "STUDENT", studentHash);
         Integer exists = db.queryForObject("SELECT COUNT(*) FROM departments", Integer.class);
         if (exists != null && exists > 0) return; // only seed classes into an empty database
 
@@ -68,21 +90,59 @@ public class DevelopmentBootstrap {
         db.update("INSERT INTO semesters(academic_year_id,label,start_date,end_date) SELECT id,?,?,? FROM academic_years WHERE label=?", semesterLabel, semesterStart, semesterEnd, yearLabel);
         db.update("INSERT INTO courses(department_id,code,name) SELECT id,'BSC-CS','B.Sc. Computer Science' FROM departments WHERE code='CS'");
         db.update("INSERT INTO sections(course_id,semester_id,code) SELECT c.id,se.id,'CS-2A' FROM courses c CROSS JOIN semesters se WHERE c.code='BSC-CS' AND se.label=?", semesterLabel);
-        db.update("INSERT INTO subjects(course_id,code,name) SELECT id,'CS201','Data Structures' FROM courses WHERE code='BSC-CS'");
-        db.update("INSERT INTO faculty_assignments(faculty_user_id,section_id,subject_id) SELECT f.id,s.id,sub.id FROM users f CROSS JOIN sections s CROSS JOIN subjects sub WHERE f.email='faculty@college.test' AND s.code='CS-2A' AND sub.code='CS201'");
-        db.update("INSERT INTO student_enrollments(student_user_id,section_id) SELECT u.id,s.id FROM users u CROSS JOIN sections s WHERE u.email='student@college.test' AND s.code='CS-2A'");
-        sampleSession(db, latest(today.minusDays(2), semesterStart), "Lecture 1", "PRESENT");
-        sampleSession(db, latest(today.minusDays(1), semesterStart), "Lecture 2", "LATE");
-        log.info("Seeded demo class CS-2A / CS201 for semester {} to {}", semesterStart, semesterEnd);
+        long section = db.queryForObject("SELECT id FROM sections WHERE code='CS-2A'", Long.class);
+        long[] faculty = new long[DEMO_FACULTY.length];
+        for (int i = 0; i < DEMO_FACULTY.length; i++) faculty[i] = userId(db, DEMO_FACULTY[i][0]);
+        long[] students = new long[DEMO_STUDENTS.length];
+        for (int i = 0; i < DEMO_STUDENTS.length; i++) {
+            students[i] = userId(db, (String) DEMO_STUDENTS[i][0]);
+            db.update("INSERT INTO student_enrollments(student_user_id,section_id) VALUES(?,?)", students[i], section);
+        }
+
+        // About a month of past classes (from 30 days ago, or the semester start if later, up to yesterday),
+        // so faculty can still open today's session themselves. Fixed random seed: the same demo every time.
+        java.util.Random random = new java.util.Random(2026);
+        LocalDate from = today.minusDays(30).isBefore(semesterStart) ? semesterStart : today.minusDays(30);
+        int sessions = 0, records = 0;
+        for (DemoSubject subject : DEMO_SUBJECTS) {
+            db.update("INSERT INTO subjects(course_id,code,name) SELECT id,?,? FROM courses WHERE code='BSC-CS'", subject.code(), subject.name());
+            long subjectId = db.queryForObject("SELECT id FROM subjects WHERE code=?", Long.class, subject.code());
+            long teacher = faculty[subject.teacher()];
+            db.update("INSERT INTO faculty_assignments(faculty_user_id,section_id,subject_id) VALUES(?,?,?)", teacher, section, subjectId);
+            int lecture = 0;
+            for (LocalDate day = from; day.isBefore(today); day = day.plusDays(1)) {
+                if (!subject.days().contains(day.getDayOfWeek())) continue;
+                lecture++;
+                // One class in the month was cancelled (e.g. a holiday): it is kept but excluded from every total.
+                boolean cancelled = subject.code().equals("CS203") && lecture == 3;
+                db.update("INSERT INTO class_sessions(section_id,subject_id,session_date,session_label,state,version,created_by) VALUES(?,?,?,?,?,1,?)",
+                    section, subjectId, day, "Lecture " + lecture, cancelled ? "CANCELLED" : "COMPLETED", teacher);
+                if (cancelled) continue;
+                long sessionId = db.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+                List<Object[]> marks = new java.util.ArrayList<>();
+                for (int i = 0; i < students.length; i++) {
+                    double rate = (Double) DEMO_STUDENTS[i][2], roll = random.nextDouble();
+                    String status = roll < rate * 0.92 ? "PRESENT" : roll < rate ? "LATE" : "ABSENT";
+                    marks.add(new Object[]{sessionId, students[i], status, teacher});
+                }
+                db.batchUpdate("INSERT INTO attendance_records(class_session_id,student_user_id,status,marked_by) VALUES(?,?,?,?)", marks);
+                sessions++;
+                records += marks.size();
+            }
+        }
+        log.info("Seeded demo section CS-2A ({} to {}): {} subjects, {} students, {} completed sessions, {} attendance marks",
+            semesterStart, semesterEnd, DEMO_SUBJECTS.size(), students.length, sessions, records);
     }
 
-    private static LocalDate latest(LocalDate a, LocalDate b) { return a.isAfter(b) ? a : b; }
+    private static long userId(JdbcTemplate db, String email) {
+        return db.queryForObject("SELECT id FROM users WHERE email=?", Long.class, email);
+    }
 
-    private void sampleSession(JdbcTemplate db, LocalDate date, String label, String status) {
-        db.update("INSERT INTO class_sessions(section_id,subject_id,session_date,session_label,state,version,created_by) SELECT s.id,sub.id,?,?,'COMPLETED',1,f.id" +
-            " FROM sections s JOIN subjects sub ON sub.course_id=s.course_id JOIN users f ON f.email='faculty@college.test' WHERE s.code='CS-2A' AND sub.code='CS201'", date, label);
-        db.update("INSERT INTO attendance_records(class_session_id,student_user_id,status,marked_by) SELECT cs.id,stu.id,?,f.id FROM class_sessions cs" +
-            " JOIN users stu ON stu.email='student@college.test' JOIN users f ON f.email='faculty@college.test' WHERE cs.session_label=? AND cs.session_date=?", status, label, date);
+    /** Like addUser, but with a precomputed hash so a dozen demo accounts don't each pay for BCrypt. */
+    private void addUserWithHash(JdbcTemplate db, String email, String name, String role, String passwordHash) {
+        Integer exists = db.queryForObject("SELECT COUNT(*) FROM users WHERE email=?", Integer.class, email);
+        if (exists == null || exists == 0)
+            db.update("INSERT INTO users(email,password_hash,display_name,role,must_change_password) VALUES(?,?,?,?,FALSE)", email, passwordHash, name, role);
     }
 
     /** Inserts the account if the email is new. Returns true when a row was created. */

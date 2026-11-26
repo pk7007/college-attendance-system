@@ -42,13 +42,14 @@ a.call('/admin/assignments','POST',{'userId':fid,'sectionId':c['sectionId'],'sub
 assignment=next(x for x in f.call('/faculty/classes') if x['sectionId']==c['sectionId'])
 session=f.call('/faculty/classes/'+str(assignment['assignmentId'])+'/sessions','POST',{'sessionDate':day,'sessionLabel':'Verification '+stamp})
 sid=session['id']; path='/faculty/sessions/'+str(sid)+'/attendance'
+demo_total=s.call('/student/attendance/summary')['total']  # the demo student is not in the verification class
 f.call(path,'PUT',{'expectedVersion':0,'records':[{'studentId':u['id'],'status':'PRESENT'}]})
 f.call(path,'PUT',{'expectedVersion':0,'records':[{'studentId':u['id'],'status':'ABSENT'}]},status=409)
 f.call(path,'PUT',{'expectedVersion':1,'records':[{'studentId':u['id'],'status':'LATE'}]})
 rows=a.call('/reports/attendance?from='+day+'&to='+day+'&sectionId='+str(c['sectionId']))
 assert len(rows)==1 and rows[0]['status']=='LATE'
 assert 'LATE' in a.call('/reports/attendance.csv?sectionId='+str(c['sectionId']))
-assert s.call('/student/attendance/summary')['total']==2
+assert s.call('/student/attendance/summary')['total']==demo_total
 assert all(x.get('sessionLabel')!='Verification '+stamp for x in s.call('/student/attendance/history')['content'])
 v=Client();v.call('/auth/login','POST',{'email':u['email'],'password':'Verification-Temp-123!'})
 v.call('/student/attendance/summary',status=403)  # temporary password must be replaced first
