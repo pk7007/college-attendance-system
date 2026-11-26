@@ -1,43 +1,86 @@
 package edu.college.attendance;
 
+import java.time.LocalDate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Profile;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
+/**
+ * Startup data.
+ * <ul>
+ *   <li>Any profile: creates the first administrator from CAM_BOOTSTRAP_ADMIN_EMAIL / CAM_BOOTSTRAP_ADMIN_PASSWORD
+ *       if that account does not exist yet, so a fresh database is never left without a way to sign in.</li>
+ *   <li>dev profile only: adds one demo faculty, one demo student and a sample class on an empty database.
+ *       Dates are relative to today so the demo semester is always current.</li>
+ * </ul>
+ * Existing accounts are never modified, so changing the configuration does not reset passwords.
+ */
 @Configuration
-@Profile("dev")
 public class DevelopmentBootstrap {
-    @Bean ApplicationRunner demoData(JdbcTemplate db,PasswordEncoder passwords,
-      @Value("${CAM_BOOTSTRAP_ADMIN_EMAIL:}") String adminEmail,@Value("${CAM_BOOTSTRAP_ADMIN_PASSWORD:}") String adminPassword,
-      @Value("${CAM_DEMO_FACULTY_PASSWORD:FacultyDemo-2026!}") String facultyPassword,@Value("${CAM_DEMO_STUDENT_PASSWORD:StudentDemo-2026!}") String studentPassword) {
-        return args -> seed(db,passwords,adminEmail,adminPassword,facultyPassword,studentPassword);
+    private static final Logger log = LoggerFactory.getLogger(DevelopmentBootstrap.class);
+
+    @Bean
+    ApplicationRunner startupData(JdbcTemplate db, PasswordEncoder passwords, TransactionTemplate tx, Environment env,
+                                  @Value("${CAM_BOOTSTRAP_ADMIN_EMAIL:}") String adminEmail,
+                                  @Value("${CAM_BOOTSTRAP_ADMIN_PASSWORD:}") String adminPassword,
+                                  @Value("${CAM_DEMO_FACULTY_PASSWORD:FacultyDemo-2026!}") String facultyPassword,
+                                  @Value("${CAM_DEMO_STUDENT_PASSWORD:StudentDemo-2026!}") String studentPassword) {
+        return args -> tx.executeWithoutResult(status -> {
+            if (!adminEmail.isBlank()) {
+                if (adminPassword.length() < 12) log.warn("CAM_BOOTSTRAP_ADMIN_PASSWORD must be at least 12 characters; no administrator was created.");
+                else if (addUser(db, passwords, adminEmail, "Campus Administrator", "ADMIN", adminPassword)) log.info("Created administrator {}", adminEmail.trim().toLowerCase());
+            }
+            Integer admins = db.queryForObject("SELECT COUNT(*) FROM users WHERE role='ADMIN' AND active=TRUE", Integer.class);
+            if (admins == null || admins == 0) log.warn("No active administrator exists. Set CAM_BOOTSTRAP_ADMIN_EMAIL and CAM_BOOTSTRAP_ADMIN_PASSWORD and restart.");
+            if (env.acceptsProfiles(Profiles.of("dev"))) seedDemo(db, passwords, facultyPassword, studentPassword);
+        });
     }
-    @Transactional void seed(JdbcTemplate db,PasswordEncoder encoder,String adminEmail,String adminPassword,String facultyPassword,String studentPassword) {
-        if(adminEmail==null||adminEmail.isBlank()||adminPassword==null||adminPassword.length()<12) return;
-        addUser(db,encoder,adminEmail,"Campus Administrator","ADMIN",adminPassword);
-        addUser(db,encoder,"faculty@college.test","Jordan Lee","FACULTY",facultyPassword);
-        addUser(db,encoder,"student@college.test","Sam Patel","STUDENT",studentPassword);
-        Integer exists=db.queryForObject("SELECT COUNT(*) FROM departments WHERE code='CS'",Integer.class); if(exists!=null&&exists>0)return;
+
+    private void seedDemo(JdbcTemplate db, PasswordEncoder encoder, String facultyPassword, String studentPassword) {
+        addUser(db, encoder, "faculty@college.test", "Jordan Lee", "FACULTY", facultyPassword);
+        addUser(db, encoder, "student@college.test", "Sam Patel", "STUDENT", studentPassword);
+        Integer exists = db.queryForObject("SELECT COUNT(*) FROM departments", Integer.class);
+        if (exists != null && exists > 0) return; // only seed classes into an empty database
+
+        LocalDate today = LocalDate.now();
+        LocalDate semesterStart = today.minusMonths(2).withDayOfMonth(1), semesterEnd = today.plusMonths(4);
+        LocalDate yearStart = semesterStart, yearEnd = semesterStart.plusYears(1).minusDays(1);
+        String yearLabel = yearStart.getYear() + "-" + yearEnd.getYear();
+
         db.update("INSERT INTO departments(code,name) VALUES('CS','Computer Science')");
-        db.update("INSERT INTO academic_years(label,start_date,end_date) VALUES('2026-2027','2026-06-01','2027-05-31')");
-        db.update("INSERT INTO semesters(academic_year_id,label,start_date,end_date) SELECT id,'Semester 1','2026-06-01','2026-12-31' FROM academic_years WHERE label='2026-2027'");
+        db.update("INSERT INTO academic_years(label,start_date,end_date) VALUES(?,?,?)", yearLabel, yearStart, yearEnd);
+        db.update("INSERT INTO semesters(academic_year_id,label,start_date,end_date) SELECT id,'Semester 1',?,? FROM academic_years WHERE label=?", semesterStart, semesterEnd, yearLabel);
         db.update("INSERT INTO courses(department_id,code,name) SELECT id,'BSC-CS','B.Sc. Computer Science' FROM departments WHERE code='CS'");
         db.update("INSERT INTO sections(course_id,semester_id,code) SELECT c.id,se.id,'CS-2A' FROM courses c CROSS JOIN semesters se WHERE c.code='BSC-CS' AND se.label='Semester 1'");
         db.update("INSERT INTO subjects(course_id,code,name) SELECT id,'CS201','Data Structures' FROM courses WHERE code='BSC-CS'");
         db.update("INSERT INTO faculty_assignments(faculty_user_id,section_id,subject_id) SELECT f.id,s.id,sub.id FROM users f CROSS JOIN sections s CROSS JOIN subjects sub WHERE f.email='faculty@college.test' AND s.code='CS-2A' AND sub.code='CS201'");
         db.update("INSERT INTO student_enrollments(student_user_id,section_id) SELECT u.id,s.id FROM users u CROSS JOIN sections s WHERE u.email='student@college.test' AND s.code='CS-2A'");
-        db.update("INSERT INTO class_sessions(section_id,subject_id,session_date,session_label,state,created_by) SELECT s.id,sub.id,'2026-11-03','Lecture 1','COMPLETED',f.id FROM sections s JOIN subjects sub ON sub.course_id=s.course_id JOIN users f ON f.email='faculty@college.test' WHERE s.code='CS-2A' AND sub.code='CS201'");
-        db.update("INSERT INTO attendance_records(class_session_id,student_user_id,status,marked_by) SELECT cs.id,stu.id,'PRESENT',f.id FROM class_sessions cs JOIN users stu ON stu.email='student@college.test' JOIN users f ON f.email='faculty@college.test' WHERE cs.session_label='Lecture 1' AND cs.session_date='2026-11-03'");
-        db.update("INSERT INTO class_sessions(section_id,subject_id,session_date,session_label,state,created_by) SELECT s.id,sub.id,'2026-11-04','Lecture 2','COMPLETED',f.id FROM sections s JOIN subjects sub ON sub.course_id=s.course_id JOIN users f ON f.email='faculty@college.test' WHERE s.code='CS-2A' AND sub.code='CS201'");
-        db.update("INSERT INTO attendance_records(class_session_id,student_user_id,status,marked_by) SELECT cs.id,stu.id,'LATE',f.id FROM class_sessions cs JOIN users stu ON stu.email='student@college.test' JOIN users f ON f.email='faculty@college.test' WHERE cs.session_label='Lecture 2' AND cs.session_date='2026-11-04'");
+        sampleSession(db, today.minusDays(2), "Lecture 1", "PRESENT");
+        sampleSession(db, today.minusDays(1), "Lecture 2", "LATE");
+        log.info("Seeded demo class CS-2A / CS201 for semester {} to {}", semesterStart, semesterEnd);
     }
-    private void addUser(JdbcTemplate db,PasswordEncoder encoder,String email,String name,String role,String password) {
-        Integer exists=db.queryForObject("SELECT COUNT(*) FROM users WHERE email=?",Integer.class,email.toLowerCase());
-        if(exists==null||exists==0) db.update("INSERT INTO users(email,password_hash,display_name,role,must_change_password) VALUES(?,?,?,?,FALSE)",email.toLowerCase(),encoder.encode(password),name,role);
+
+    private void sampleSession(JdbcTemplate db, LocalDate date, String label, String status) {
+        db.update("INSERT INTO class_sessions(section_id,subject_id,session_date,session_label,state,version,created_by) SELECT s.id,sub.id,?,?,'COMPLETED',1,f.id" +
+            " FROM sections s JOIN subjects sub ON sub.course_id=s.course_id JOIN users f ON f.email='faculty@college.test' WHERE s.code='CS-2A' AND sub.code='CS201'", date, label);
+        db.update("INSERT INTO attendance_records(class_session_id,student_user_id,status,marked_by) SELECT cs.id,stu.id,?,f.id FROM class_sessions cs" +
+            " JOIN users stu ON stu.email='student@college.test' JOIN users f ON f.email='faculty@college.test' WHERE cs.session_label=? AND cs.session_date=?", status, label, date);
+    }
+
+    /** Inserts the account if the email is new. Returns true when a row was created. */
+    private boolean addUser(JdbcTemplate db, PasswordEncoder encoder, String email, String name, String role, String password) {
+        String normalized = email.trim().toLowerCase();
+        Integer exists = db.queryForObject("SELECT COUNT(*) FROM users WHERE email=?", Integer.class, normalized);
+        if (exists != null && exists > 0) return false;
+        db.update("INSERT INTO users(email,password_hash,display_name,role,must_change_password) VALUES(?,?,?,?,FALSE)", normalized, encoder.encode(password), name, role);
+        return true;
     }
 }
