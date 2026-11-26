@@ -28,9 +28,10 @@ public class AdminController {
     private final JdbcTemplate db;
     private final PasswordEncoder passwords;
     private final AppSupport app;
+    private final LoginThrottle throttle;
 
-    public AdminController(JdbcTemplate db, PasswordEncoder passwords, AppSupport app) {
-        this.db = db; this.passwords = passwords; this.app = app;
+    public AdminController(JdbcTemplate db, PasswordEncoder passwords, AppSupport app, LoginThrottle throttle) {
+        this.db = db; this.passwords = passwords; this.app = app; this.throttle = throttle;
     }
 
     public record NewUser(@NotBlank @Size(max = 120) String displayName, @NotBlank @Email @Size(max = 254) String email,
@@ -74,8 +75,10 @@ public class AdminController {
 
     @PostMapping("/users/{id}/password") @Transactional
     Map<String, Object> resetPassword(@PathVariable long id, @Valid @RequestBody ResetPassword input, Authentication auth) {
-        int changed = db.update("UPDATE users SET password_hash=?,must_change_password=TRUE WHERE id=?", passwords.encode(input.password()), id);
-        if (changed != 1) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found.");
+        List<String> email = db.query("SELECT email FROM users WHERE id=?", (rs, n) -> rs.getString(1), id);
+        if (email.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found.");
+        db.update("UPDATE users SET password_hash=?,must_change_password=TRUE WHERE id=?", passwords.encode(input.password()), id);
+        throttle.forgetEmail(email.getFirst()); // a reset is the documented way out of a sign-in block
         app.audit(auth, "PASSWORD_RESET", "USER", id);
         return Map.of("id", id, "mustChangePassword", true);
     }

@@ -377,7 +377,19 @@ async function loadRoster(c, sessionId) {
   const all = $('all-present'); if (all) all.onclick = () => { Object.keys(marks).forEach(k => marks[k] = 'PRESENT'); paint(); };
   const cancel = $('cancel-session');
   if (cancel) cancel.onclick = () => { if (confirm('Cancel this session? It will be removed from every attendance total.')) act(cancel, () => api(`/faculty/sessions/${sessionId}/cancel`, {method: 'POST'}), 'Session cancelled.'); };
-  $('save-attendance').onclick = e => act(e.currentTarget, () => api(`/faculty/sessions/${sessionId}/attendance`, {method: 'PUT', body: {expectedVersion: s.version, records: roster.map(u => ({studentId: u.studentId, status: marks[u.studentId]}))}}), `Attendance saved for ${plural(roster.length, 'student')}.`);
+  $('save-attendance').onclick = async e => {
+    const button = e.currentTarget; button.disabled = true;
+    try {
+      await api(`/faculty/sessions/${sessionId}/attendance`, {method: 'PUT', body: {expectedVersion: s.version, records: roster.map(u => ({studentId: u.studentId, status: marks[u.studentId]}))}});
+      flash = {message: `Attendance saved for ${plural(roster.length, 'student')}.`, kind: 'success'};
+    } catch (x) {
+      if (handleAuthError(x)) return;
+      if (x.status !== 400 && x.status !== 409) { notice(x.message, 'error'); button.disabled = false; return; }
+      // Someone else saved, or the roster changed: reload so the faculty member sees the current state.
+      flash = {message: x.message, kind: 'error'};
+    }
+    await render();
+  };
 }
 
 // ---- student --------------------------------------------------------------------------------

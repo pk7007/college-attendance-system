@@ -35,8 +35,9 @@ public class AuthController {
         this.dummyHash = passwords.encode("timing-equaliser-not-a-real-password");
     }
 
-    public record Login(@NotBlank @Size(max = 254) String email, @NotBlank @Size(max = 64) String password) {}
-    public record ChangePassword(@NotBlank @Size(max = 64) String currentPassword, @NotBlank @Size(min = 12, max = 64) String newPassword) {}
+    // Existing passwords may be up to 72 characters (BCrypt's limit, which earlier versions allowed); new ones are capped at 64.
+    public record Login(@NotBlank @Size(max = 254) String email, @NotBlank @Size(max = 72) String password) {}
+    public record ChangePassword(@NotBlank @Size(max = 72) String currentPassword, @NotBlank @Size(min = 12, max = 64) String newPassword) {}
 
     @GetMapping("/csrf")
     Map<String, String> csrf(CsrfToken token) { return Map.of("token", token.getToken()); }

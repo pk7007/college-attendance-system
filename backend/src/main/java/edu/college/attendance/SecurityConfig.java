@@ -32,6 +32,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
 public class SecurityConfig {
     /** Paths a user with a temporary password may still call. Everything else waits until they choose their own password. */
     private static final Set<String> TEMPORARY_PASSWORD_PATHS = Set.of("/api/auth/me", "/api/auth/password", "/api/auth/logout", "/api/auth/csrf");
+    /** Never checked against the old session: signing in (as anyone) must work even if the browser still holds a stale session. */
+    private static final Set<String> SESSION_INDEPENDENT_PATHS = Set.of("/api/auth/login", "/api/auth/logout", "/api/auth/csrf");
 
     @Bean PasswordEncoder passwordEncoder() { return new BCryptPasswordEncoder(); }
     @Bean SecurityContextRepository securityContextRepository() { return new HttpSessionSecurityContextRepository(); }
@@ -57,14 +59,14 @@ public class SecurityConfig {
             @Override
             protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res, FilterChain chain) throws IOException, ServletException {
                 var auth = SecurityContextHolder.getContext().getAuthentication();
-                if (auth != null && auth.isAuthenticated() && !(auth instanceof AnonymousAuthenticationToken)) {
+                String path = req.getRequestURI().substring(req.getContextPath().length());
+                if (!SESSION_INDEPENDENT_PATHS.contains(path) && auth != null && auth.isAuthenticated() && !(auth instanceof AnonymousAuthenticationToken)) {
                     List<Boolean> mustChange = db.query("SELECT must_change_password FROM users WHERE email=? AND active=TRUE", (rs, n) -> rs.getBoolean(1), auth.getName());
                     if (mustChange.isEmpty()) {
                         new SecurityContextLogoutHandler().logout(req, res, auth);
                         json(res, 401, "Your account is disabled or no longer exists. Contact the administrator.");
                         return;
                     }
-                    String path = req.getRequestURI().substring(req.getContextPath().length());
                     if (mustChange.getFirst() && path.startsWith("/api/") && !TEMPORARY_PASSWORD_PATHS.contains(path)) {
                         json(res, 403, "Change your temporary password before continuing.");
                         return;

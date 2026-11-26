@@ -98,7 +98,7 @@ With the default `dev` profile, a fresh database gets these accounts and one sam
 
 ## Using it for a real college
 
-1. In `.env` (Docker) or your `local-config` file, set `SPRING_PROFILES_ACTIVE=prod` so no demo data is created. Set your own admin email and a strong `CAM_BOOTSTRAP_ADMIN_PASSWORD` (12+ characters), and change the database passwords **before the first start**.
+1. In `.env` (Docker) or your `local-config` file, set `SPRING_PROFILES_ACTIVE=prod` so no demo data is created. Set your own admin email and a `CAM_BOOTSTRAP_ADMIN_PASSWORD` (12+ characters), and change the database passwords **before the first start**. In `prod` the admin is asked to choose a private password at first sign-in.
 2. Sign in as the admin. Under **People**, create faculty and student accounts with a temporary password each. Every new user must choose their own password at first sign-in.
 3. Under **Classes**, create a class. The form suggests the current academic year (June–May) and semester (Jun–Nov or Dec–May); change the dates to match your college. Then assign faculty and enroll students.
 4. Faculty use **Take attendance**: pick the class, check the date, **Open session**, mark students, **Save attendance**.

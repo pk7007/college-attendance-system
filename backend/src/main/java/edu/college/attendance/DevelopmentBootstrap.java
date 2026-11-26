@@ -32,21 +32,25 @@ public class DevelopmentBootstrap {
                                   @Value("${CAM_BOOTSTRAP_ADMIN_EMAIL:}") String adminEmail,
                                   @Value("${CAM_BOOTSTRAP_ADMIN_PASSWORD:}") String adminPassword,
                                   @Value("${CAM_DEMO_FACULTY_PASSWORD:FacultyDemo-2026!}") String facultyPassword,
-                                  @Value("${CAM_DEMO_STUDENT_PASSWORD:StudentDemo-2026!}") String studentPassword) {
+                                  @Value("${CAM_DEMO_STUDENT_PASSWORD:StudentDemo-2026!}") String studentPassword,
+                                  @Value("${CAM_BOOTSTRAP_ADMIN_MUST_CHANGE:}") String adminMustChange) {
+        boolean dev = env.acceptsProfiles(Profiles.of("dev"));
+        // Outside the demo, the configured password is often a copied default, so the first sign-in must replace it.
+        boolean forceChange = adminMustChange.isBlank() ? !dev : Boolean.parseBoolean(adminMustChange.trim());
         return args -> tx.executeWithoutResult(status -> {
             if (!adminEmail.isBlank()) {
                 if (adminPassword.length() < 12) log.warn("CAM_BOOTSTRAP_ADMIN_PASSWORD must be at least 12 characters; no administrator was created.");
-                else if (addUser(db, passwords, adminEmail, "Campus Administrator", "ADMIN", adminPassword)) log.info("Created administrator {}", adminEmail.trim().toLowerCase());
+                else if (addUser(db, passwords, adminEmail, "Campus Administrator", "ADMIN", adminPassword, forceChange)) log.info("Created administrator {}", adminEmail.trim().toLowerCase());
             }
             Integer admins = db.queryForObject("SELECT COUNT(*) FROM users WHERE role='ADMIN' AND active=TRUE", Integer.class);
             if (admins == null || admins == 0) log.warn("No active administrator exists. Set CAM_BOOTSTRAP_ADMIN_EMAIL and CAM_BOOTSTRAP_ADMIN_PASSWORD and restart.");
-            if (env.acceptsProfiles(Profiles.of("dev"))) seedDemo(db, passwords, facultyPassword, studentPassword);
+            if (dev) seedDemo(db, passwords, facultyPassword, studentPassword);
         });
     }
 
     private void seedDemo(JdbcTemplate db, PasswordEncoder encoder, String facultyPassword, String studentPassword) {
-        addUser(db, encoder, "faculty@college.test", "Jordan Lee", "FACULTY", facultyPassword);
-        addUser(db, encoder, "student@college.test", "Sam Patel", "STUDENT", studentPassword);
+        addUser(db, encoder, "faculty@college.test", "Jordan Lee", "FACULTY", facultyPassword, false);
+        addUser(db, encoder, "student@college.test", "Sam Patel", "STUDENT", studentPassword, false);
         Integer exists = db.queryForObject("SELECT COUNT(*) FROM departments", Integer.class);
         if (exists != null && exists > 0) return; // only seed classes into an empty database
 
@@ -82,11 +86,11 @@ public class DevelopmentBootstrap {
     }
 
     /** Inserts the account if the email is new. Returns true when a row was created. */
-    private boolean addUser(JdbcTemplate db, PasswordEncoder encoder, String email, String name, String role, String password) {
+    private boolean addUser(JdbcTemplate db, PasswordEncoder encoder, String email, String name, String role, String password, boolean mustChange) {
         String normalized = email.trim().toLowerCase();
         Integer exists = db.queryForObject("SELECT COUNT(*) FROM users WHERE email=?", Integer.class, normalized);
         if (exists != null && exists > 0) return false;
-        db.update("INSERT INTO users(email,password_hash,display_name,role,must_change_password) VALUES(?,?,?,?,FALSE)", normalized, encoder.encode(password), name, role);
+        db.update("INSERT INTO users(email,password_hash,display_name,role,must_change_password) VALUES(?,?,?,?,?)", normalized, encoder.encode(password), name, role, mustChange);
         return true;
     }
 }

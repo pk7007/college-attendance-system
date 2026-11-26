@@ -46,6 +46,9 @@ public class LoginThrottle {
 
     public void recordSuccess(String key) { failures.remove(key); }
 
+    /** Clears every block for an email (from any address), e.g. after an administrator resets that password. */
+    public void forgetEmail(String email) { failures.keySet().removeIf(k -> k.startsWith(email + '|')); }
+
     int tracked() { return failures.size(); }
 
     private boolean expired(Failures f) { return !f.firstAt().plus(WINDOW).isAfter(clock.instant()); }

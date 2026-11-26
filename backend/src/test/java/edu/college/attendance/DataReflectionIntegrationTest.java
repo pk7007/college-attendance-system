@@ -41,7 +41,8 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
     "spring.profiles.active=test",
     "spring.flyway.clean-disabled=false",
     "CAM_BOOTSTRAP_ADMIN_EMAIL=" + DataReflectionIntegrationTest.ADMIN_EMAIL,
-    "CAM_BOOTSTRAP_ADMIN_PASSWORD=" + DataReflectionIntegrationTest.ADMIN_PASSWORD})
+    "CAM_BOOTSTRAP_ADMIN_PASSWORD=" + DataReflectionIntegrationTest.ADMIN_PASSWORD,
+    "CAM_BOOTSTRAP_ADMIN_MUST_CHANGE=false"})
 @AutoConfigureMockMvc
 @EnabledIfEnvironmentVariable(named = "CAM_IT_DB_URL", matches = ".+")
 class DataReflectionIntegrationTest {
@@ -65,6 +66,8 @@ class DataReflectionIntegrationTest {
 
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper json;
+    @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
+    @Autowired org.springframework.security.crypto.password.PasswordEncoder encoder;
 
     private Actor admin;
     private final LocalDate today = LocalDate.now();
@@ -345,11 +348,40 @@ class DataReflectionIntegrationTest {
     }
 
     @Test
-    void repeatedWrongPasswordsAreThrottled() throws Exception {
+    void repeatedWrongPasswordsAreThrottledUntilAnAdminResetsThePassword() throws Exception {
         Actor user = newUser("STUDENT");
         Map<String, String> wrong = Map.of("email", user.email, "password", "definitely-wrong-password");
         for (int i = 0; i < LoginThrottle.MAX_FAILURES; i++) anonymousLogin(wrong, 401);
         anonymousLogin(Map.of("email", user.email, "password", PASSWORD), 429);
+        // The 429 message tells the user to ask for a reset, so a reset must lift the block.
+        admin.post("/api/admin/users/" + user.id + "/password", Map.of("password", "Unblocked-Reset-123!"), 200);
+        anonymousLogin(Map.of("email", user.email, "password", "Unblocked-Reset-123!"), 200);
+    }
+
+    @Test
+    void signingInWorksEvenWhenTheBrowserHoldsAStaleSession() throws Exception {
+        Actor other = newUser("STUDENT");
+        // A browser whose session belongs to a user who still has a temporary password...
+        admin.post("/api/admin/users", Map.of("displayName", "Temp", "email", "temp" + System.nanoTime() + "@it.college.test", "role", "STUDENT", "password", "Temporary-Pass-123!"), 200);
+        String tempEmail = find(admin.get("/api/admin/users"), "displayName", "Temp").get("email").asText();
+        Actor temp = login(tempEmail, "Temporary-Pass-123!");
+        temp.raw(MockMvcRequestBuilders.post("/api/auth/login").with(csrf()).contentType(MediaType.APPLICATION_JSON)
+            .content(json.writeValueAsString(Map.of("email", other.email, "password", PASSWORD))), 200);
+        assertThat(temp.get("/api/auth/me").get("email").asText()).isEqualTo(other.email);
+        // ...or to a user who has since been deactivated.
+        Actor gone = newUser("STUDENT");
+        admin.put("/api/admin/manage/users/" + gone.id, Map.of("value", gone.name, "active", false), 200);
+        gone.raw(MockMvcRequestBuilders.post("/api/auth/login").with(csrf()).contentType(MediaType.APPLICATION_JSON)
+            .content(json.writeValueAsString(Map.of("email", other.email, "password", PASSWORD))), 200);
+        assertThat(gone.get("/api/student/classes")).isNotNull();
+    }
+
+    @Test
+    void passwordsUpTo72CharactersFromEarlierVersionsStillWork() throws Exception {
+        String email = "long" + System.nanoTime() + "@it.college.test", longPassword = "x".repeat(70);
+        jdbc.update("INSERT INTO users(email,password_hash,display_name,role) VALUES(?,?,?,'STUDENT')", email, encoder.encode(longPassword), "Long password");
+        Actor user = login(email, longPassword);
+        user.post("/api/auth/password", Map.of("currentPassword", longPassword, "newPassword", PASSWORD), 200);
     }
 
     // ---- fixtures and helpers -------------------------------------------------------------------
