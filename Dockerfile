@@ -1,11 +1,12 @@
 # Builds the attendance web application. Used by docker-compose.yml; you normally do not run this directly.
-FROM eclipse-temurin:21-jdk AS build
+# The official Maven image already contains Maven (same version as the wrapper), so the build does not
+# depend on a separate one-shot download of Maven itself; library downloads are retried by Maven.
+FROM maven:3.9.11-eclipse-temurin-21 AS build
 WORKDIR /src
-COPY backend/.mvn .mvn
-COPY backend/mvnw backend/pom.xml ./
-RUN chmod +x mvnw && ./mvnw -B -q dependency:go-offline
+COPY backend/pom.xml ./
+RUN mvn -B -q dependency:go-offline
 COPY backend/src src
-RUN ./mvnw -B -q package -DskipTests
+RUN mvn -B -q package -DskipTests
 
 FROM eclipse-temurin:21-jre
 RUN groupadd --system app && useradd --system --gid app app
