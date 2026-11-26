@@ -44,6 +44,7 @@ td,th{text-align:left;padding:11px 8px;border-bottom:1px solid #edf1f0;vertical-
 .person{display:grid;gap:3px}.person small{color:#6f8086;font-size:10px}
 .marks{display:flex;gap:5px}.mark{background:#f0f4f3;color:#41606b;padding:7px 9px}
 .mark.on{background:#dff1e8;color:#206a55;box-shadow:inset 0 0 0 1px #9fd2bd}.mark.absent.on{background:#ffebe8;color:#9c3e34;box-shadow:inset 0 0 0 1px #f0b2a8}.mark.late.on{background:#fff4dd;color:#80611d;box-shadow:inset 0 0 0 1px #e8cf91}
+.low{color:#a24035}
 .bar{height:6px;background:#ecf1ef;border-radius:99px;margin-top:8px}.bar i{display:block;height:100%;background:#308d79;border-radius:99px}
 .subject{border:1px solid #e8efec;border-radius:9px;padding:13px}.subjects{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
 .actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
@@ -300,6 +301,8 @@ async function manageView() {
 }
 
 // ---- reports (admin and faculty) -----------------------------------------------------------
+/** The on-screen record list stays short; the CSV has every row. */
+const RECENT_ROWS = 50;
 async function reportView() {
   const query = new URLSearchParams(Object.entries(reportFilters).filter(([, v]) => v)).toString();
   // Admins can report on every section, including deactivated ones; faculty only on their current classes.
@@ -311,9 +314,10 @@ async function reportView() {
   <label class="field">Section<select name="sectionId"><option value="">${user.role === 'ADMIN' ? 'All sections' : 'All my sections'}</option>${options(sections, c => c.id, c => c.label, reportFilters.sectionId)}</select></label>
   <div class="actions"><button class="primary">Apply filters</button><button type="button" class="quiet" id="clear">Clear</button></div></form><button id="csv" class="secondary">Download CSV</button></section>
   <section class="panel"><div class="panel-head"><h2>Attendance by student</h2><span class="pill">${plural(summary.length, 'row')}</span></div>${table(['Student', 'Section', 'Subject', 'Present', 'Late', 'Absent', 'Attendance'],
-    summary.map(r => [`${esc(r.studentName)}<br><span class="muted">${esc(r.email)}</span>`, esc(r.sectionCode), esc(r.subjectName), esc(r.present), esc(r.late), esc(r.absent), `<b>${esc(pct(r.percentage))}</b>`]))}</section>
+    summary.map(r => [`${esc(r.studentName)}<br><span class="muted">${esc(r.email)}</span>`, esc(r.sectionCode), esc(r.subjectName), esc(r.present), esc(r.late), esc(r.absent), `<b class="${Number(r.percentage) < 75 ? 'low' : ''}" ${Number(r.percentage) < 75 ? 'title="Below 75%"' : ''}>${esc(pct(r.percentage))}</b>`]))}</section>
   <section class="panel"><div class="panel-head"><h2>Session records</h2><span class="pill">${rows.length >= 5000 ? 'first 5,000 rows' : plural(rows.length, 'row')}</span></div>${table(['Date', 'Session', 'Section', 'Subject', 'Student', 'Status'],
-    rows.map(r => [esc(r.sessionDate), esc(r.sessionLabel), esc(r.sectionCode), esc(r.subjectName), esc(r.studentName), esc(r.status.toLowerCase())]))}</section>`);
+    rows.slice(0, RECENT_ROWS).map(r => [esc(r.sessionDate), esc(r.sessionLabel), esc(r.sectionCode), esc(r.subjectName), esc(r.studentName), esc(r.status.toLowerCase())]))}
+  ${rows.length > RECENT_ROWS ? `<p class="form-note">Showing the ${RECENT_ROWS} most recent records. Narrow the dates or section, or download the CSV for all ${rows.length >= 5000 ? '5,000+' : rows.length}.</p>` : ''}</section>`);
   const ff = $('filters');
   ff.onsubmit = e => {
     e.preventDefault(); const next = Object.fromEntries(new FormData(ff));
@@ -406,7 +410,7 @@ async function student() {
     return;
   }
   const [s, classes] = await Promise.all([api('/student/attendance/summary'), api('/student/classes')]);
-  shell('Your attendance', 'Only your own attendance is shown here. It updates as soon as faculty save a session.', `<section class="grid">${metric('Overall attendance', pct(s.percentage), `Across ${plural(s.total, 'completed session')}`)}${metric('Present', s.present, 'Marked present')}${metric('Late', s.late, 'Counts as attended')}${metric('Absent', s.absent, 'Marked absent')}</section>
+  shell('Your attendance', 'Only your own attendance is shown here. It updates as soon as faculty save a session.', `<section class="grid">${metric('Overall attendance', pct(s.percentage), s.percentage != null && s.percentage < 75 ? `Below 75% · ${plural(s.total, 'completed session')}` : `Across ${plural(s.total, 'completed session')}`)}${metric('Present', s.present, 'Marked present')}${metric('Late', s.late, 'Counts as attended')}${metric('Absent', s.absent, 'Marked absent')}</section>
   <p class="muted">${esc(s.formula)}</p>
   <section class="panel"><h2>By subject</h2><div class="subjects">${s.subjects.length ? s.subjects.map(x => `<article class="subject"><b>${esc(x.subjectName)}</b><p class="muted">${esc(x.subjectCode)} · ${esc(x.attended)}/${esc(x.total)} attended</p><div class="bar" role="img" aria-label="${esc(pct(x.percentage))} attended"><i style="width:${Math.min(100, Number(x.percentage) || 0)}%"></i></div><small>${esc(pct(x.percentage))}</small></article>`).join('') : '<p class="muted">No completed sessions yet.</p>'}</div></section>
   <section class="panel"><h2>Your classes</h2>${table(['Course', 'Section', 'Subject', 'Semester', 'Faculty'], classes.map(c => [esc(c.courseName), esc(c.sectionCode), `${esc(c.subjectName)} <span class="muted">${esc(c.subjectCode)}</span>`, esc(c.semester), c.faculty ? esc(c.faculty) : '<span class="muted">Not assigned yet</span>']), 'You are not enrolled in any active class yet.')}

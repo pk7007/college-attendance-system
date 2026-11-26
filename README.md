@@ -86,13 +86,22 @@ Both scripts check Java and MySQL, build and test the app, then start it. Wait f
 
 ## Demo accounts
 
-With the default `dev` profile, a fresh database gets these accounts and one sample class, `CS-2A` / `CS201 Data Structures`, set in the current semester:
+With the default `dev` profile, a fresh database gets about **a month of sample attendance**. The demo has one section, `CS-2A` (B.Sc. Computer Science), in the current semester:
+
+- **3 subjects:** CS201 Data Structures (Mon/Wed/Fri) and CS202 Database Systems (Tue/Thu), taught by Jordan Lee; and CS203 Operating Systems (Mon/Thu), taught by Anita Rao.
+- **12 students**, with marks for every class in the last 30 days up to yesterday. Most students attend well and a few fall below 75%, so reports show realistic variety. Attendance under 75% is highlighted in red.
+- **One cancelled class**, which is excluded from every total.
+- **Today's class is left open**, so faculty can take today's attendance themselves.
+
+If the current semester started less than 30 days ago, the sample begins at the semester start.
 
 | Role | Email | Password |
 | --- | --- | --- |
 | Admin | admin@college.test | CampusAdmin-Change-123! |
-| Faculty | faculty@college.test | FacultyDemo-2026! |
-| Student | student@college.test | StudentDemo-2026! |
+| Faculty | faculty@college.test (Jordan Lee), faculty2@college.test (Anita Rao) | FacultyDemo-2026! |
+| Student | student@college.test (Sam Patel), student2@college.test … student12@college.test | StudentDemo-2026! |
+
+The sample is only added to an **empty** database. To reload it on an existing Docker install, run `docker compose down -v` (this deletes all data) and then `docker compose up -d`.
 
 **Try it:** sign in as faculty in one browser window and as the student in a private window. Save attendance as faculty, then refresh the student page: the new percentage appears straight away.
 
